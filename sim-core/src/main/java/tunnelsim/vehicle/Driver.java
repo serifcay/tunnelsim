@@ -1,0 +1,282 @@
+package tunnelsim.vehicle;
+
+import tunnelsim.map.Edge;
+import tunnelsim.map.MapPosition;
+import tunnelsim.map.Pose;
+import tunnelsim.map.RoadNetwork;
+import tunnelsim.map.Route;
+import tunnelsim.scenario.ScenarioConfig.CarConfig;
+import tunnelsim.scenario.ScenarioConfig.DriverConfig;
+import tunnelsim.scenario.ScenarioConfig.EventConfig;
+import tunnelsim.util.GaussMarkov;
+import tunnelsim.util.MathUtil;
+import tunnelsim.util.Rng;
+import tunnelsim.util.Rot;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+/**
+ * Generates a car's ground truth trajectory: a kinematic point mass following the road, with a
+ * speed controller that respects speed limits, curve speeds and scripted traffic events.
+ */
+public final class Driver {
+    public static final double DT = 0.01;
+
+    private static final double SQUAT_PITCH = 0.0035; // rad per m/s^2 of longitudinal acceleration
+    private static final double ROLL_GAIN = 0.008;    // rad per m/s^2 of lateral acceleration
+    private static final double SPEED_GAIN = 0.8;     // 1/s
+    private static final double JERK = 2.5;           // m/s^3
+    private static final double HARD_JERK = 15;       // m/s^3
+
+    private final RoadNetwork net;
+    private final CarConfig car;
+    private final DriverConfig dc;
+    private final Rng rng;
+    private final int leaf;
+    private final double pathEnd;
+
+    // Event state.
+    private final List<EventConfig> events;
+    private final boolean[] done;
+    private double holdUntil = -1;
+    private int holdingEvent = -1;
+    private int hardBrakeEvent = -1;
+    private double stopAndGoPhaseStart = -1;
+    private boolean stopAndGoStopping;
+
+    public Driver(RoadNetwork net, Route route, CarConfig car, Rng rng) {
+        this.net = net;
+        this.car = car;
+        this.dc = car.driver;
+        this.rng = rng;
+        this.leaf = choosePath(route);
+        this.pathEnd = net.pathEnd(leaf);
+        this.events = new ArrayList<>(car.events);
+        this.events.sort(Comparator.comparingDouble(e -> e.at));
+        this.done = new boolean[events.size()];
+    }
+
+    /** Decides at every fork whether this driver follows the route. */
+    private int choosePath(Route route) {
+        int e = 0;
+        while (!net.edge(e).isLeaf()) {
+            int routeChild = route.next(e);
+            List<Integer> children = net.edge(e).children();
+            if (rng.chance(dc.pFollowRoute)) {
+                e = routeChild;
+            } else {
+                e = children.get(0) == routeChild ? children.get(1) : children.get(0);
+            }
+        }
+        return e;
+    }
+
+    public TruthTrajectory simulate(double duration) {
+        TruthTrajectory traj = new TruthTrajectory(DT, leaf, (int) (duration / DT) + 2);
+        double[] mount = initialMount();
+        traj.addMountChange(new TruthTrajectory.MountChange(0, mount));
+
+        GaussMarkov jitter = new GaussMarkov(dc.speedJitter, 20, rng);
+        double off = 0, v = car.startSpeed, a = 0;
+        int steps = (int) Math.round(duration / DT);
+        for (int k = 0; k <= steps; k++) {
+            double t = k * DT;
+            MapPosition pos = net.positionOnPath(leaf, off);
+            Edge edge = net.edge(pos.edge());
+            Pose pose = edge.pose(pos.s());
+            double latAcc = v * v * pose.curvature();
+            double pitch = Math.atan(pose.grade()) + SQUAT_PITCH * a;
+            double roll = ROLL_GAIN * latAcc;
+            traj.add(t, pos.edge(), pos.s(), off, pose.x(), pose.y(), pose.z(), pose.heading(), pitch, roll,
+                    v, a, pose.curvature(), pose.grade(), net.tunnelAt(pos));
+
+            if (off >= pathEnd - 0.5) {
+                break; // arrived
+            }
+
+            // Mount shift events.
+            for (int i = 0; i < events.size(); i++) {
+                EventConfig e = events.get(i);
+                if (!done[i] && "mountShift".equals(e.type) && off >= e.at) {
+                    done[i] = true;
+                    double[] delta = Rot.mul(Rot.axisAngle(new double[]{1, 0, 0}, Math.toRadians(e.pitchDeg)),
+                            Rot.mul(Rot.axisAngle(new double[]{0, 1, 0}, Math.toRadians(e.yawDeg)),
+                                    Rot.axisAngle(new double[]{0, 0, 1}, Math.toRadians(e.rollDeg))));
+                    mount = Rot.mul(delta, mount);
+                    traj.addMountChange(new TruthTrajectory.MountChange(t, mount));
+                }
+            }
+
+            double jerk = JERK;
+            double aCmd;
+            if (t < car.startTime) {
+                aCmd = 0;
+                v = 0;
+                a = 0;
+            } else if (holdingEvent >= 0) {
+                v = 0;
+                a = 0;
+                aCmd = 0;
+                if (t >= holdUntil) {
+                    if ("stop".equals(events.get(holdingEvent).type)) {
+                        done[holdingEvent] = true;
+                    }
+                    holdingEvent = -1;
+                    stopAndGoPhaseStart = t;
+                    stopAndGoStopping = false;
+                }
+            } else {
+                double vDes = desiredSpeed(off, v, t);
+                // Speed fluctuation scales down at low target speeds so stops are real stops.
+                vDes = Math.max(0, vDes + jitter.step(DT) * Math.min(1, vDes / 10));
+                aCmd = MathUtil.clamp(SPEED_GAIN * (vDes - v), -4.0, dc.maxAccel);
+                // The speed loop lags a braking curve; brake directly for a stop target ahead.
+                double stopAt = nextStopPosition(off);
+                if (!Double.isNaN(stopAt) && v > 0) {
+                    double d = stopAt - off;
+                    double aReq = d > 0.5 ? v * v / (2 * d) : 4.0;
+                    if (aReq > 0.6 * dc.comfortDecel) {
+                        aCmd = Math.min(aCmd, -Math.min(6.0, 1.1 * aReq));
+                        jerk = HARD_JERK;
+                    }
+                }
+                if (hardBrakeEvent >= 0) {
+                    EventConfig e = events.get(hardBrakeEvent);
+                    if (v > e.speed + 0.2) {
+                        aCmd = -e.decel;
+                        jerk = HARD_JERK;
+                    } else {
+                        done[hardBrakeEvent] = true;
+                        hardBrakeEvent = -1;
+                    }
+                }
+                // Enter a hold when a stop target is reached.
+                int stopEvent = pendingStop(off);
+                if (stopEvent >= 0 && v < 0.4) {
+                    EventConfig e = events.get(stopEvent);
+                    holdingEvent = stopEvent;
+                    holdUntil = t + ("stop".equals(e.type) ? e.duration : e.stopTime);
+                    v = 0;
+                    a = 0;
+                    aCmd = 0;
+                }
+            }
+            a += MathUtil.clamp(aCmd - a, -jerk * DT, jerk * DT);
+            double vNew = Math.max(0, v + a * DT);
+            off += 0.5 * (v + vNew) * DT;
+            v = vNew;
+            if (v == 0 && a < 0) {
+                a = 0;
+            }
+        }
+        return traj;
+    }
+
+    private double[] initialMount() {
+        // Nominal portrait dashboard mount: phone x = car right, phone y = car up, phone z = car backwards.
+        double[] nominal = {0, -1, 0, 0, 0, 1, -1, 0, 0};
+        double yaw = Math.toRadians(rng.inRange(car.mount.yawDeg));
+        double pitch = Math.toRadians(rng.inRange(car.mount.pitchDeg));
+        double roll = Math.toRadians(rng.inRange(car.mount.rollDeg));
+        double[] delta = Rot.mul(Rot.axisAngle(new double[]{1, 0, 0}, pitch),
+                Rot.mul(Rot.axisAngle(new double[]{0, 1, 0}, yaw), Rot.axisAngle(new double[]{0, 0, 1}, roll)));
+        return Rot.mul(delta, nominal);
+    }
+
+    /** Speed the driver aims for, considering limits, curves and events ahead. */
+    private double desiredSpeed(double off, double v, double t) {
+        double decel = dc.comfortDecel;
+        double lookahead = Math.max(60, v * v / (2 * decel) + 3 * v);
+        double vDes = Double.MAX_VALUE;
+        for (double d = 0; d <= lookahead; d += 5) {
+            MapPosition p = net.positionOnPath(leaf, off + d);
+            Edge e = net.edge(p.edge());
+            double limit = e.speedLimit * dc.speedFactor;
+            double k = Math.abs(e.curvature(p.s()));
+            if (k > 1e-6) {
+                limit = Math.min(limit, Math.sqrt(dc.maxLateralAccel / k));
+            }
+            vDes = Math.min(vDes, Math.sqrt(limit * limit + 2 * decel * d));
+        }
+        // End of the road: come to a stop.
+        vDes = Math.min(vDes, Math.sqrt(2 * decel * Math.max(0, pathEnd - off - 1)));
+
+        for (int i = 0; i < events.size(); i++) {
+            EventConfig e = events.get(i);
+            if (done[i]) {
+                continue;
+            }
+            double d = e.at - off;
+            switch (e.type) {
+                case "slowTo" -> {
+                    if (off >= e.at && off <= e.at + e.length) {
+                        vDes = Math.min(vDes, e.speed);
+                    } else if (d > 0) {
+                        vDes = Math.min(vDes, Math.sqrt(e.speed * e.speed + 2 * decel * d));
+                    } else if (off > e.at + e.length) {
+                        done[i] = true;
+                    }
+                }
+                case "stop" -> vDes = Math.min(vDes, Math.sqrt(2 * decel * Math.max(0, d)));
+                case "stopAndGo" -> {
+                    if (d > 0) {
+                        vDes = Math.min(vDes, Math.sqrt(e.speed * e.speed + 2 * decel * d));
+                    } else if (off <= e.at + e.length) {
+                        if (stopAndGoPhaseStart < 0) {
+                            stopAndGoPhaseStart = t;
+                            stopAndGoStopping = false;
+                        }
+                        if (!stopAndGoStopping && t - stopAndGoPhaseStart > e.goTime) {
+                            stopAndGoStopping = true;
+                        }
+                        vDes = Math.min(vDes, stopAndGoStopping ? 0 : e.speed);
+                    } else {
+                        done[i] = true;
+                    }
+                }
+                case "hardBrake" -> {
+                    if (d <= 0 && hardBrakeEvent < 0) {
+                        hardBrakeEvent = i;
+                    }
+                }
+                default -> {
+                }
+            }
+        }
+        return vDes;
+    }
+
+    /** Position of the next pending "stop" event, or NaN. */
+    private double nextStopPosition(double off) {
+        for (int i = 0; i < events.size(); i++) {
+            EventConfig e = events.get(i);
+            if (!done[i] && "stop".equals(e.type) && e.at - off < 300) {
+                return e.at;
+            }
+        }
+        return Double.NaN;
+    }
+
+    /** An event whose stop target has been reached: a "stop" at its position or a stop-and-go stop phase. */
+    private int pendingStop(double off) {
+        for (int i = 0; i < events.size(); i++) {
+            EventConfig e = events.get(i);
+            if (done[i]) {
+                continue;
+            }
+            if ("stop".equals(e.type) && off >= e.at - 3) {
+                return i;
+            }
+            if ("stopAndGo".equals(e.type) && stopAndGoStopping && off >= e.at && off <= e.at + e.length) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public int leaf() {
+        return leaf;
+    }
+}

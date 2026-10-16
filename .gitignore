@@ -1,0 +1,17 @@
+# Build
+.gradle/
+build/
+out/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Generated results (selected figures are copied to docs/figures)
+results/
+
+# The case study brief is not ours to publish
+*.pdf

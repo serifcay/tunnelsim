@@ -1,0 +1,17 @@
+# S4: 5 km straight, flat tunnel with stop-and-go traffic for 1.5 km. Traffic data reports the jam.
+# Worst case for constant-velocity dead reckoning; zero-velocity updates should shine.
+name: S4 stop-and-go 5 km
+description: Straight flat 5 km tunnel with 1.5 km of stop-and-go traffic. Live traffic correctly reports the jam.
+seed: 4
+duration: 700
+road:
+  main:
+    - { type: straight, length: 7000 }
+  tunnels:
+    - { from: 1200, to: 6200 }
+  traffic:
+    - { from: 1800, to: 3300, speed: 6 }
+cars:
+  - id: car1
+    events:
+      - { at: 1800, type: stopAndGo, length: 1500, speed: 10, stopTime: 8, goTime: 20 }

@@ -1,0 +1,28 @@
+# S6: same road as S2, but the driver misses the exit the route expects.
+name: S6 missed exit
+description: S2 road; the route takes the exit but the driver stays on the main road. Branch detection and reroute.
+seed: 6
+duration: 320
+road:
+  main:
+    - { type: straight, length: 1500 }
+    - { type: clothoid, length: 150, curvatureEnd: 0.002 }
+    - { type: arc, length: 800, curvature: 0.002, grade: -0.03 }
+    - { type: clothoid, length: 150, curvatureEnd: 0.0, grade: -0.01 }
+    - { type: straight, length: 2500, grade: 0.02 }
+  tunnels:
+    - { from: 1800, to: 4800 }
+  branches:
+    - at: 3900
+      speedLimit: 16.7
+      tunnelUntil: 250
+      ramp:
+        - { type: clothoid, length: 80, curvatureEnd: -0.01, grade: 0.02 }
+        - { type: arc, length: 250, curvature: -0.01, grade: 0.04 }
+        - { type: clothoid, length: 80, curvatureEnd: 0.0, grade: 0.02 }
+        - { type: straight, length: 600 }
+route:
+  takeBranchAt: [3900]
+cars:
+  - id: car1
+    driver: { pFollowRoute: 0.0 }

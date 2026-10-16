@@ -1,0 +1,14 @@
+# S3: 5 km underwater tunnel with a V-shaped profile (-4% then +4%).
+# Tests barometric profile matching and gravity (grade) compensation.
+name: S3 underwater 5 km
+description: Straight 5 km underwater tunnel, 4% down then 4% up (100 m deep). Barometer and grade correction.
+seed: 3
+duration: 420
+road:
+  main:
+    - { type: straight, length: 1200 }
+    - { type: straight, length: 2500, grade: -0.04 }
+    - { type: straight, length: 2500, grade: 0.04 }
+    - { type: straight, length: 1200 }
+  tunnels:
+    - { from: 1200, to: 6200 }

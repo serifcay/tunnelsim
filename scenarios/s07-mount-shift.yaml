@@ -1,0 +1,29 @@
+# S7: same road as S2; the phone shifts in its mount halfway through the tunnel.
+name: S7 mount shift
+description: S2 road; the phone rotates 25 deg in its mount 1 km into the tunnel. Alignment robustness.
+seed: 7
+duration: 320
+road:
+  main:
+    - { type: straight, length: 1500 }
+    - { type: clothoid, length: 150, curvatureEnd: 0.002 }
+    - { type: arc, length: 800, curvature: 0.002, grade: -0.03 }
+    - { type: clothoid, length: 150, curvatureEnd: 0.0, grade: -0.01 }
+    - { type: straight, length: 2500, grade: 0.02 }
+  tunnels:
+    - { from: 1800, to: 4800 }
+  branches:
+    - at: 3900
+      speedLimit: 16.7
+      tunnelUntil: 250
+      ramp:
+        - { type: clothoid, length: 80, curvatureEnd: -0.01, grade: 0.02 }
+        - { type: arc, length: 250, curvature: -0.01, grade: 0.04 }
+        - { type: clothoid, length: 80, curvatureEnd: 0.0, grade: 0.02 }
+        - { type: straight, length: 600 }
+route:
+  takeBranchAt: [3900]
+cars:
+  - id: car1
+    events:
+      - { at: 2800, type: mountShift, yawDeg: 25, pitchDeg: 10 }

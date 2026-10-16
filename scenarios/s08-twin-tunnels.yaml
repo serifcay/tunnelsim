@@ -1,0 +1,17 @@
+# S8: two 800 m tunnels separated by 150 m of open road (too short for a reliable GNSS fix).
+name: S8 twin tunnels
+description: Two 800 m tunnels 150 m apart on a curving road. Partial recovery in a short GNSS window.
+seed: 8
+duration: 260
+road:
+  main:
+    - { type: straight, length: 1000 }
+    - { type: clothoid, length: 100, curvatureEnd: -0.0025 }
+    - { type: arc, length: 500, curvature: -0.0025 }
+    - { type: clothoid, length: 200, curvatureEnd: 0.0025 }
+    - { type: arc, length: 500, curvature: 0.0025 }
+    - { type: clothoid, length: 100, curvatureEnd: 0 }
+    - { type: straight, length: 1600 }
+  tunnels:
+    - { from: 1000, to: 1800 }
+    - { from: 1950, to: 2750 }

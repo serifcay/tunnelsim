@@ -1,0 +1,19 @@
+# E2: S4 jam with vehicle speed from OBD-II (option E).
+# Wheel speed removes most of the speed uncertainty.
+name: E2 S4 with OBD speed
+description: S4 jam with OBD-II vehicle speed available.
+seed: 4
+duration: 700
+road:
+  main:
+    - { type: straight, length: 7000 }
+  tunnels:
+    - { from: 1200, to: 6200 }
+  traffic:
+    - { from: 1800, to: 3300, speed: 6 }
+cars:
+  - id: car1
+    events:
+      - { at: 1800, type: stopAndGo, length: 1500, speed: 10, stopTime: 8, goTime: 20 }
+options: { obd: true }
+estimators: [A, C, D, D+E]

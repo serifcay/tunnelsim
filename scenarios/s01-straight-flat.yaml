@@ -1,0 +1,11 @@
+# S1: straight, flat 2 km tunnel at a steady 80 km/h.
+# Sanity check, and the worst case for map matching: the road has no shape to match against.
+name: S1 straight flat 2 km
+description: Straight, flat 2 km tunnel, steady 80 km/h. No curvature or grade information.
+seed: 1
+duration: 260
+road:
+  main:
+    - { type: straight, length: 4000 }
+  tunnels:
+    - { from: 1200, to: 3200 }

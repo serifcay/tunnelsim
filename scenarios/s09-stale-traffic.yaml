@@ -1,0 +1,17 @@
+# S9: S4 jam, but the traffic data is stale and still reports free flow.
+# Tests a misleading speed prior.
+name: S9 stale traffic
+description: S4 jam, but live traffic wrongly reports free flow (22 m/s). Misleading speed prior.
+seed: 9
+duration: 700
+road:
+  main:
+    - { type: straight, length: 7000 }
+  tunnels:
+    - { from: 1200, to: 6200 }
+  traffic:
+    - { from: 1800, to: 3300, speed: 22 }
+cars:
+  - id: car1
+    events:
+      - { at: 1800, type: stopAndGo, length: 1500, speed: 10, stopTime: 8, goTime: 20 }
