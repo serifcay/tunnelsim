@@ -151,7 +151,7 @@ final class StripView extends CanvasPane {
             String label = String.format(Locale.ROOT, "%+.1f m  (±%.0f)%s", s.error(), sig,
                     s.wrongBranch() ? "  WRONG BRANCH" : "");
             g.setFill(s.wrongBranch() ? Color.web("#c0392b") : Palette.TEXT);
-            double lx = Math.min(Math.max(ex, x0) + 10, x1 - 150);
+            double lx = Math.min(Math.max(ex, x0) + 10, x1 - label.length() * 6.2);
             g.fillText(label, lx, y);
         }
         g.setTextBaseline(VPos.BASELINE);

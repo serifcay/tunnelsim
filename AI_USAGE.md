@@ -48,8 +48,36 @@ This file records how AI tools were used on this case study: what they suggested
 - Drafted the architecture: record-then-estimate, compute-then-play UI, separate random streams per component. Also drafted the particle filter's state and update steps, the aiding modules, the scenario format, metrics, UI layout and milestones.
 
 **My decisions**
-- *Pending review.*
+- Approved the design as written, including the iOS profile toggle and YAML scenarios.
 
-**Assumptions the AI made that still need my confirmation**
-- Added an iOS device profile toggle, which I had not confirmed yet.
-- Chose YAML over JSON for scenario files.
+### 2026-10-16: Implementation
+
+**AI contribution**
+- Wrote the code for every milestone: the road network and driver model, sensor models, the
+  alignment front-end, estimators A–D (+E), navigation layer, Monte Carlo runner and studies,
+  JavaFX simulator, tests, README.
+- Debugged the estimators against the simulator. Every fix was driven by a trace or a Monte
+  Carlo result, not by intuition. Each change is listed in `docs/DESIGN.md` §14.
+
+**Where the AI's first version was wrong** (found by the simulator, then fixed)
+
+| First version | What exposed it | Fix |
+|---|---|---|
+| A and B froze between fixes during GNSS | Constant ~12 m lag in the trace while GNSS was good | Propagate continuously |
+| The particle filter learned the accelerometer bias itself | D drifted more than the EKF; a known weakness of particle filters for static parameters | Kalman bias calibrator before the tunnel |
+| Speed clamped at zero inside the filters | Systematic under-estimation after each stop in the S4 jam | Allow slightly negative speed in the state |
+| Stop detector released slowly when the car pulled away | Same S4 trace: ~1 m/s lost per stop-and-go cycle | Release on departure of the acceleration vector |
+| Forward-axis regression used every fix | Alignment error jumped 0.3° → 4° at tunnel entry on a curve | Straight road, good fixes only |
+| Barometer offset and gyro bias per particle | Ablation showed the result changing from 3 to 40 m with the random draws ("genetic drift") | Calibrate them globally |
+| Barometer treated as independent at 2 Hz | Removing one error source at a time: only removing the baro fixed over-confidence | Down-weight by correlation time |
+| Lateral acceleration aiding on | Body roll biases it by ~8% | Off by default |
+| Monte Carlo kept all runs in memory | Out-of-memory on the 7-minute scenarios | Keep a per-run digest |
+| Tunnel-length study plotted error *at the exit* | C and D looked flat with length: the light-sensor portal fix resets them just before the exit | Plot the largest in-tunnel error instead |
+
+**Still open** (reported in the write-up, not hidden)
+- OBD fusion (D+E) is still over-confident in stop-and-go traffic.
+- A phone shift mid-tunnel (S7) is only partly handled.
+- The stop detector relies on road vibration; with none at all it fails badly.
+
+**My review and overrides**
+- *To be filled in by me after reviewing the code and results.*

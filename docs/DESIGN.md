@@ -1,6 +1,7 @@
 # Through the Tunnel: Design
 
-Status: **draft for review**. Nothing here is implemented yet.
+Status: **implemented**. Sections 1–12 are the design as reviewed before coding. Section 14 lists
+what changed during implementation and why.
 
 ## 1. Goal
 
@@ -422,8 +423,26 @@ Run commands (target): `./gradlew :sim-app:run` and `./gradlew :sim-batch:run --
 
 **Live-demo rehearsal list** (likely interviewer requests): change tunnel length; add a jam or a stop; make the driver miss the exit; increase IMU bias; disable the barometer; kill beacons; switch to the iOS profile; reduce particles; move the exit closer to the tunnel entrance.
 
-## 13. Open questions
+## 13. Open questions (resolved)
 
-1. Root package and repository name (placeholder: `tunnelsim`).
-2. Whether the estimator should use a perturbed map by default, or the true map with map error only as a sensitivity study (proposal: the true map by default, with a map-error study in batch).
-3. Night lighting: model it now or only mention it? (Proposal: model it; it is cheap.)
+1. Root package and repository name: `tunnelsim`.
+2. Map errors: the estimators use the true map. A map-error study is listed as future work.
+3. Night lighting: modelled (`road.lighting: night`).
+
+## 14. As built: changes from the design
+
+Each change below was driven by a failure seen in the simulator or the Monte Carlo runs.
+
+| Area | Design | As built | Why |
+|---|---|---|---|
+| Particle state | `(edge, s, v, b_a, b_g, b_h)` | `(edge, s, v, b_a, k_g)` per particle (+ OBD scale residual with option E). Gyro bias, lateral accelerometer bias and barometer offset are calibrated **globally** by a small Kalman filter / low-pass while GNSS is available (`BiasCalibrator`). | As per-particle nuisance states, the baro offset and gyro bias made weights vary even on a road with no information. Frequent resampling on such weights makes the cloud's mean speed random-walk ("genetic drift"); on S1 this cost ~1.5 m/s of speed error. Static parameters are also a known weak spot of particle filters: resampling discards what was learned. |
+| Accelerometer bias | Learned by the particle filter during the GNSS phase | Kalman calibration before the tunnel; particles inherit the calibrated value and its uncertainty at tunnel entry | The particle filter calibrated the bias worse than the EKF (C) and drifted further in the tunnel |
+| Gyro scale | Not modelled | Per-particle gyro scale factor with a 1% prior | A scale error biases the speed inferred from curvature matching consistently, so it cannot be treated as white noise |
+| Speed in the filter state | Clamped at ≥ 0 | May go slightly negative in the state; only position is forced forward and the output is clamped | Clamping made particles with a too-high accelerometer bias look perfectly stopped, so every stop selected a biased bias. In stop-and-go traffic this cost up to 1 m/s per cycle. |
+| Stop detector | Variance of specific force | Plus **immediate release** when the specific-force vector departs from its value at rest | A late release told the filters "stopped" for 0.3–0.5 s while the car was already accelerating at 2 m/s² |
+| Alignment (forward axis) | Regression of horizontal accel on GNSS speed change | The same, but only on straight road (low yaw rate) and with good fixes | In curves, lateral acceleration × random speed changes rotated the forward estimate by 0.5° per fix; near portals noisy Doppler did the same. 2.5–4° of misalignment leaks curve acceleration into the forward axis. |
+| Phone handling | Not planned | Gyro spikes (> 20°/s) propagate the alignment; estimators widen the accelerometer bias afterwards | S7: a 27° phone rotation |
+| Barometer likelihood | Student-t at 2 Hz | Down-weighted by its correlation time (20 s) | Tunnel pressure disturbances are correlated for ~25 s. Treated as independent, they made the filter 7× over-confident and caused the worst tails. |
+| Lateral acceleration aiding | On | **Off by default** (available as an option) | Body roll in curves adds gravity to the lateral axis (~8%), which biases speed by ~4% |
+| OBD | Scale-corrected speed | Also latency-compensated, with the scale residual carried per particle | The 0.2 s latency is systematic during every acceleration in stop-and-go traffic |
+| Monte Carlo | Keep runs | Keep only a per-run digest; no particle snapshots in batch | Memory: 40 parallel 7-minute runs exhausted the heap |

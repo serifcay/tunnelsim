@@ -10,7 +10,6 @@ import tunnelsim.scenario.ScenarioLoader;
 import tunnelsim.vehicle.TruthTrajectory;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -179,11 +178,5 @@ public final class MonteCarlo {
             return "-";
         }
         return Math.abs(v) >= 100 ? String.format(Locale.ROOT, "%.0f", v) : String.format(Locale.ROOT, "%.1f", v);
-    }
-
-    static double[] sorted(double[] v) {
-        double[] c = v.clone();
-        Arrays.sort(c);
-        return c;
     }
 }
