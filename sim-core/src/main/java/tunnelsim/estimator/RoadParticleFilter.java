@@ -57,7 +57,7 @@ public final class RoadParticleFilter implements Estimator {
     private final PortalDetector portals = new PortalDetector();
 
     private int[] edge;
-    private double[] s, v, ba, ks, logw;
+    private double[] s, v, ba, ks, ko, accel, logw;
     private final BiasCalibrator calibrator;
     private double[] predYaw, predLat;
     private boolean initialised;
@@ -96,6 +96,8 @@ public final class RoadParticleFilter implements Estimator {
         v = new double[n];
         ba = new double[n];
         ks = new double[n];
+        ko = new double[n];
+        accel = new double[n];
         calibrator = new BiasCalibrator(net);
         logw = new double[n];
         predYaw = new double[n];
@@ -147,11 +149,14 @@ public final class RoadParticleFilter implements Estimator {
             case ObdSpeed o -> {
                 lastObd = o.speed();
                 if (initialised && ctx.useObd() && gnssSpeedSum > 200 && !gnss.fresh(t)) {
+                    // Calibrated speedometer scale; its residual error (ko, per particle) is
+                    // systematic, so it is carried as a nuisance state rather than treated as noise.
                     double scale = obdSum / gnssSpeedSum;
-                    double z = o.speed() / scale;
                     double sigma = 0.25;
+                    double latency = ctx.scenario().sensors.obd.latency; // assumed calibrated per car
                     for (int i = 0; i < n; i++) {
-                        double e = v[i] - z;
+                        double vThen = v[i] - accel[i] * latency;
+                        double e = vThen - o.speed() / (scale * (1 + ko[i]));
                         logw[i] += -0.25 * e * e / (sigma * sigma); // tempered x0.5: quantisation is correlated
                     }
                     normaliseAndResample();
@@ -217,6 +222,7 @@ public final class RoadParticleFilter implements Estimator {
             v[i] = Math.max(0, fix.speed() + rng.gaussian(0.3));
             ba[i] = rng.gaussian(0.2);
             ks[i] = 1 + rng.gaussian(pf.gyroScaleSigma);
+            ko[i] = rng.gaussian(0.005);
             logw[i] = -Math.log(n);
         }
         initialised = true;
@@ -322,6 +328,14 @@ public final class RoadParticleFilter implements Estimator {
     public void onVehicleImu(VehicleImu imu) {
         t = imu.t();
         calibrator.onImu(imu);
+        if (imu.mountDisturbed() && initialised) {
+            // The phone moved: small residual misalignment changes the gravity leak into the
+            // forward axis, so the calibrated bias no longer holds. Widen it and let the map decide.
+            for (int i = 0; i < n; i++) {
+                ba[i] += rng.gaussian(0.1);
+                ks[i] = 1 + rng.gaussian(pf.gyroScaleSigma);
+            }
+        }
         if (!initialised) {
             lastBlockT = imu.t();
             return;
@@ -416,6 +430,7 @@ public final class RoadParticleFilter implements Estimator {
             double vn = Math.max(-2, v[i] + a * dt + rng.gaussian(pf.sigmaV * sqdt));
             s[i] += Math.max(0, 0.5 * (v[i] + vn)) * dt;
             v[i] = vn;
+            accel[i] = a;
             ba[i] += rng.gaussian(pf.sigmaBias * sqdt);
             while (s[i] > e.length) {
                 if (e.isLeaf()) {
@@ -465,7 +480,8 @@ public final class RoadParticleFilter implements Estimator {
 
     private void resample(double[] w) {
         int[] ne = new int[n];
-        double[] ns = new double[n], nv = new double[n], nba = new double[n], nks = new double[n];
+        double[] ns = new double[n], nv = new double[n], nba = new double[n], nks = new double[n], nko = new double[n];
+        double[] nacc = new double[n];
         double[] npy = new double[n], npl = new double[n];
         double step = 1.0 / n;
         double u = rng.uniform() * step;
@@ -481,6 +497,8 @@ public final class RoadParticleFilter implements Estimator {
             nv[i] = v[j] + rng.gaussian(0.03);
             nba[i] = ba[j] + rng.gaussian(0.001);
             nks[i] = ks[j] + rng.gaussian(0.0005);
+            nko[i] = ko[j] + rng.gaussian(0.0002);
+            nacc[i] = accel[j];
             npy[i] = predYaw[j];
             npl[i] = predLat[j];
         }
@@ -489,6 +507,8 @@ public final class RoadParticleFilter implements Estimator {
         v = nv;
         ba = nba;
         ks = nks;
+        ko = nko;
+        accel = nacc;
         // Curvature window accumulators travel with the particles.
         System.arraycopy(npy, 0, predYaw, 0, n);
         System.arraycopy(npl, 0, predLat, 0, n);

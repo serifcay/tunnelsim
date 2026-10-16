@@ -109,6 +109,9 @@ public final class MapAidedEkf extends PathEstimator {
         if (!initialised || dt <= 0) {
             return;
         }
+        if (imu.mountDisturbed()) {
+            p[2][2] += 0.1 * 0.1; // phone moved: the calibrated bias no longer holds
+        }
         MapPosition pos = position(x[0]);
         double g = net.edge(pos.edge()).grade(pos.s());
         double a = imu.aFwd() - x[2] - MathUtil.G * g / Math.sqrt(1 + g * g);

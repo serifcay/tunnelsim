@@ -38,6 +38,7 @@ public final class Aligner {
     private int intervalCount;
     private GnssFix prevFix;
     private double lastImuT = Double.NaN;
+    private boolean inSpike;
 
     // Exponentially forgetting regression sums: x = dv/dt, h = horizontal specific force.
     private double sw, sx, sxx;
@@ -59,6 +60,7 @@ public final class Aligner {
         double[] w = {s.gx(), s.gy(), s.gz()};
         boolean stationary = detector.update(f[0], f[1], f[2], w[0], w[1], w[2]);
 
+        boolean disturbed = false;
         if (trueMount != null) {
             double[] m = trueMount.apply(s.t());
             fwd = new double[]{m[0], m[3], m[6]};
@@ -68,6 +70,10 @@ public final class Aligner {
             double rate = Rot.norm(w);
             if (rate > SPIKE_RATE) {
                 rotateAll(w, dt);
+                inSpike = true;
+            } else if (inSpike) {
+                inSpike = false;
+                disturbed = true;
             }
             double tau = stationary ? 0.5 : 2.0;
             if (!lowPassInit) {
@@ -89,7 +95,7 @@ public final class Aligner {
         }
 
         return new VehicleImu(s.t(), Rot.dot(f, fwd), Rot.dot(f, left), Rot.dot(f, up),
-                Rot.dot(w, fwd), Rot.dot(w, left), Rot.dot(w, up), stationary);
+                Rot.dot(w, fwd), Rot.dot(w, left), Rot.dot(w, up), stationary, disturbed);
     }
 
     public void onGnss(GnssFix fix) {

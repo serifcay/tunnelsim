@@ -5,7 +5,7 @@ plugins {
 
 javafx {
     version = "21.0.12"
-    modules = listOf("javafx.controls")
+    modules = listOf("javafx.controls", "javafx.swing")
 }
 
 dependencies {

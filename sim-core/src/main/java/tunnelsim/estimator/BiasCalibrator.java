@@ -47,6 +47,9 @@ final class BiasCalibrator {
         if (!ready || dt <= 0) {
             return;
         }
+        if (imu.mountDisturbed()) {
+            pbb += 0.1 * 0.1;
+        }
         double a = imu.aFwd() - ba - MathUtil.G * grade / Math.sqrt(1 + grade * grade);
         v = v + a * dt;
         // F = [[1, -dt], [0, 1]]
