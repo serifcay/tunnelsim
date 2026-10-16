@@ -101,11 +101,17 @@ public final class Driver {
                 EventConfig e = events.get(i);
                 if (!done[i] && "mountShift".equals(e.type) && off >= e.at) {
                     done[i] = true;
-                    double[] delta = Rot.mul(Rot.axisAngle(new double[]{1, 0, 0}, Math.toRadians(e.pitchDeg)),
-                            Rot.mul(Rot.axisAngle(new double[]{0, 1, 0}, Math.toRadians(e.yawDeg)),
-                                    Rot.axisAngle(new double[]{0, 0, 1}, Math.toRadians(e.rollDeg))));
-                    mount = Rot.mul(delta, mount);
-                    traj.addMountChange(new TruthTrajectory.MountChange(t, mount));
+                    // The phone rotates smoothly over half a second, so the gyroscope sees the motion.
+                    double[] start = mount;
+                    int n = 50;
+                    for (int j = 1; j <= n; j++) {
+                        double f = (double) j / n;
+                        double[] delta = Rot.mul(Rot.axisAngle(new double[]{1, 0, 0}, Math.toRadians(f * e.pitchDeg)),
+                                Rot.mul(Rot.axisAngle(new double[]{0, 1, 0}, Math.toRadians(f * e.yawDeg)),
+                                        Rot.axisAngle(new double[]{0, 0, 1}, Math.toRadians(f * e.rollDeg))));
+                        mount = Rot.mul(delta, start);
+                        traj.addMountChange(new TruthTrajectory.MountChange(t + j * DT, mount));
+                    }
                 }
             }
 

@@ -14,3 +14,7 @@ application {
 tasks.named<JavaExec>("run") {
     workingDir = rootProject.projectDir
 }
+
+tasks.named<JavaExec>("run") {
+    maxHeapSize = "2g"
+}

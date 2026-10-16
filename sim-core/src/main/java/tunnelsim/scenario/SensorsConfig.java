@@ -109,10 +109,16 @@ public class SensorsConfig {
         /** Outdoor daylight range at the phone's sensor [lux]. */
         public double[] dayLux = {2000, 20000};
         public double nightLux = 8;
-        /** Tunnel interior and entrance-zone lighting [lux]. */
+        /** Tunnel interior lighting [lux]. */
         public double tunnelLux = 120;
-        public double entranceLux = 900;
-        public double entranceLength = 120;
+        /**
+         * Daytime entrance-zone lighting as a fraction of outdoor light; it fades to the interior
+         * level over the entrance length (tunnels grade their lighting so eyes can adapt).
+         */
+        public double entranceFraction = 0.08;
+        public double entranceLength = 150;
+        /** Distance over which daylight leaks into the tunnel mouth [m]. */
+        public double daylightLeak = 6;
         /** Modulation depth of the ceiling light pattern (0..1). */
         public double lightModulation = 0.3;
         /** Sensor response time constant [s]. */

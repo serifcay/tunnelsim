@@ -58,10 +58,14 @@ public final class LightModel {
                 d = Math.min(d, Math.hypot(truth.x(i) - p.x(), truth.y(i) - p.y()));
             }
         }
-        double inside = net.night() || d > c.entranceLength ? c.tunnelLux : c.entranceLux;
+        double inside = c.tunnelLux;
+        if (!net.night() && d < c.entranceLength) {
+            double entrance = Math.max(c.tunnelLux, c.entranceFraction * outside);
+            inside = entrance + (c.tunnelLux - entrance) * d / c.entranceLength;
+        }
         if (tc.lightSpacing > 0) {
             inside *= 1 + c.lightModulation * Math.cos(2 * Math.PI * truth.offset(i) / tc.lightSpacing);
         }
-        return inside + (outside - inside) * Math.exp(-d / 15.0);
+        return inside + (outside - inside) * Math.exp(-d / c.daylightLeak);
     }
 }

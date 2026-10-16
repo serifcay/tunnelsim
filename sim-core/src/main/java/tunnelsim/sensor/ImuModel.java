@@ -67,6 +67,10 @@ public final class ImuModel {
             double[] mount = truth.mountAt(t);
             double[] fp = Rot.apply(mount, f);
             double[] wp = Rot.apply(mount, w);
+            double[] wRel = mountRate(truth, t, truth.dt);
+            for (int k = 0; k < 3; k++) {
+                wp[k] += wRel[k];
+            }
             double[] am = acc.measure(fp, temp, dt);
             double[] gm = gyr.measure(wp, temp, dt);
             out.add(new ImuSample(t, am[0], am[1], am[2], gm[0], gm[1], gm[2]));
@@ -104,6 +108,23 @@ public final class ImuModel {
             (rel[7] - rel[5]) / (2 * span),
             (rel[2] - rel[6]) / (2 * span),
             (rel[3] - rel[1]) / (2 * span)};
+    }
+
+    /**
+     * Angular rate of the phone relative to the car, in the phone frame, while the phone moves in
+     * its mount. With v_phone = M v_body, a phone rotating at w sees dM/dt = -[w]x M.
+     */
+    private static double[] mountRate(TruthTrajectory tr, double t, double dt) {
+        if (tr.mountChanges().size() < 2) {
+            return new double[3];
+        }
+        double[] m0 = tr.mountAt(t - dt), m1 = tr.mountAt(t + dt), m = tr.mountAt(t);
+        double[] dm = new double[9];
+        for (int k = 0; k < 9; k++) {
+            dm[k] = -(m1[k] - m0[k]) / (2 * dt);
+        }
+        double[] w = Rot.mul(dm, Rot.transpose(m));
+        return new double[]{(w[7] - w[5]) / 2, (w[2] - w[6]) / 2, (w[3] - w[1]) / 2};
     }
 
     private static double[] velocityNav(TruthTrajectory tr, int i) {
