@@ -114,7 +114,7 @@ public final class MapAidedEkf extends PathEstimator {
         }
         MapPosition pos = position(x[0]);
         double g = net.edge(pos.edge()).grade(pos.s());
-        double a = imu.aFwd() - x[2] - MathUtil.G * g / Math.sqrt(1 + g * g);
+        double a = (imu.aFwd() - x[2] - MathUtil.G * g / Math.sqrt(1 + g * g)) / (1 + imu.accelScale());
         // No clamp at zero speed here (see RoadParticleFilter.propagate); position only moves forward.
         double v = Math.max(-2, x[1] + a * dt);
         x[0] = clampOffset(x[0] + Math.max(0, 0.5 * (x[1] + v)) * dt);

@@ -9,9 +9,21 @@ import java.util.function.DoubleFunction;
 /**
  * Estimates how the phone sits in the car and rotates IMU samples into the car frame.
  * <ul>
- *   <li><b>Up</b>: the specific force when the car is stopped (or cruising steadily with GNSS).</li>
+ *   <li><b>Up</b>: the specific force when the car is stopped (or, if it never stops, cruising steadily
+ *       with GNSS), estimated once and then <b>frozen</b>. The phone does not move relative to the car
+ *       unless it is handled, so later re-estimates only add noise: deceleration still in the
+ *       low-pass at the moment of a stop, and the slope of the road where the car stopped. A slope
+ *       absorbed into "up" is then subtracted again from the map by the estimators (counted twice);
+ *       a constant tilt, in contrast, is absorbed by the accelerometer-bias calibration.</li>
  *   <li><b>Forward</b>: regression of horizontal acceleration on GNSS speed changes. The intercept
  *       absorbs accelerometer bias; lateral (curve) acceleration is uncorrelated with speed changes.</li>
+ *   <li><b>Effective forward scale</b>: the regression slope magnitude is (1 + scale), where scale
+ *       combines the accelerometer's scale error with the car's pitch under acceleration (squat and
+ *       dive leak ~3% of the acceleration as gravity into the forward axis). It is computed in the
+ *       phone frame, so it does not depend on the forward estimate still converging, and corrected
+ *       for GNSS speed noise in the regressor, which would otherwise bias it low. With little
+ *       acceleration to learn from the slope is noisy, so it is shrunk towards 0 by its own
+ *       statistical uncertainty (prior: 0 +- 3%).</li>
  *   <li><b>Handling</b>: when the gyro shows a rotation far faster than a car can turn, the phone is
  *       moving in its mount; the estimated axes are rotated along with the gyro.</li>
  * </ul>
@@ -28,7 +40,11 @@ public final class Aligner {
     private double[] left = {-1, 0, 0};
     private double[] up = {0, 1, 0};
     private boolean upInitialised;
+    private boolean upLocked;
+    private int upSamples;
     private boolean forwardEstimated;
+    private static final int UP_STATIONARY_SAMPLES = 300; // 3 s at 100 Hz
+    private static final int UP_QUASI_STATIC_FIXES = 15;
 
     // Low-pass specific force (phone frame) and accumulation between GNSS fixes.
     private final double[] lowPass = new double[3];
@@ -41,12 +57,23 @@ public final class Aligner {
     private boolean inSpike;
 
     // Exponentially forgetting regression sums: x = dv/dt, h = horizontal specific force.
-    private double sw, sx, sxx;
+    private static final double SCALE_PRIOR_SIGMA = 0.03;
+    private double sw, sx, sxx, snn, shh;
+    private double scale;
+    private boolean scaleEstimated;
     private final double[] sh = new double[3];
     private final double[] sxh = new double[3];
 
+    private final boolean useScale;
+
     public Aligner(DoubleFunction<double[]> trueMount) {
+        this(trueMount, true);
+    }
+
+    /** @param useScale report the learned forward scale to the estimators (false: always 0) */
+    public Aligner(DoubleFunction<double[]> trueMount, boolean useScale) {
         this.trueMount = trueMount;
+        this.useScale = useScale;
     }
 
     public boolean forwardEstimated() {
@@ -74,6 +101,9 @@ public final class Aligner {
             } else if (inSpike) {
                 inSpike = false;
                 disturbed = true;
+                // The phone was handled: allow "up" to be re-estimated at the next opportunity.
+                upLocked = false;
+                upSamples = 0;
             }
             double tau = stationary ? 0.5 : 2.0;
             if (!lowPassInit) {
@@ -84,8 +114,11 @@ public final class Aligner {
                     lowPass[k] += (f[k] - lowPass[k]) * Math.min(1, dt / tau);
                 }
             }
-            if (stationary && rate < 0.03) {
+            if (!upLocked && stationary && rate < 0.03) {
                 updateUp(lowPass, upInitialised ? 0.02 : 1.0);
+                if (++upSamples >= UP_STATIONARY_SAMPLES) {
+                    upLocked = true;
+                }
             }
             for (int k = 0; k < 3; k++) {
                 intervalSum[k] += f[k];
@@ -95,7 +128,8 @@ public final class Aligner {
         }
 
         return new VehicleImu(s.t(), Rot.dot(f, fwd), Rot.dot(f, left), Rot.dot(f, up),
-                Rot.dot(w, fwd), Rot.dot(w, left), Rot.dot(w, up), stationary, disturbed);
+                Rot.dot(w, fwd), Rot.dot(w, left), Rot.dot(w, up), stationary, disturbed,
+                accelScale());
     }
 
     public void onGnss(GnssFix fix) {
@@ -111,9 +145,13 @@ public final class Aligner {
             double dvdt = (fix.speed() - prevFix.speed()) / dtFix;
             double[] mean = Rot.scale(intervalSum, 1.0 / intervalCount);
             double[] h = Rot.sub(mean, Rot.scale(up, Rot.dot(mean, up)));
-            // Quasi-static cruising refines "up" slowly.
-            if (Math.abs(dvdt) < 0.1 && fix.speed() > 5 && Math.abs(Rot.dot(h, left)) < 0.2) {
-                updateUp(mean, 0.05);
+            // Fallback when the car has not stopped yet: quasi-static cruising.
+            if (!upLocked && Math.abs(dvdt) < 0.1 && fix.speed() > 5 && Math.abs(Rot.dot(h, left)) < 0.2) {
+                updateUp(mean, upInitialised ? 0.1 : 1.0);
+                upSamples += UP_STATIONARY_SAMPLES / UP_QUASI_STATIC_FIXES;
+                if (upSamples >= UP_STATIONARY_SAMPLES) {
+                    upLocked = true;
+                }
             }
             // Straight road only: in curves the lateral acceleration times random speed changes
             // leaks into the regression.
@@ -123,10 +161,15 @@ public final class Aligner {
                 sw = sw * forget + 1;
                 sx = sx * forget + dvdt;
                 sxx = sxx * forget + dvdt * dvdt;
+                // Variance that GNSS speed noise adds to dv/dt (errors in the regressor).
+                double noise = (fix.speedAccuracy() * fix.speedAccuracy()
+                        + prevFix.speedAccuracy() * prevFix.speedAccuracy()) / (dtFix * dtFix);
+                snn = snn * forget + noise;
                 for (int k = 0; k < 3; k++) {
                     sh[k] = sh[k] * forget + h[k];
                     sxh[k] = sxh[k] * forget + dvdt * h[k];
                 }
+                shh = shh * forget + Rot.dot(h, h);
                 double varX = sxx - sx * sx / sw;
                 if (varX > 8) {
                     double[] cov = new double[3];
@@ -138,6 +181,18 @@ public final class Aligner {
                         fwd = Rot.normalize(f);
                         left = Rot.cross(up, fwd);
                         forwardEstimated = true;
+                        double signal = varX - snn;
+                        if (signal > 8 && sw > 5) {
+                            double raw = Rot.norm(f) / signal - 1;
+                            // Residual variance of the horizontal force not explained by dv/dt.
+                            double total = shh - Rot.dot(sh, sh) / sw;
+                            double explained = Rot.dot(f, f) / varX;
+                            double residual = Math.max(1e-6, (total - explained) / (sw - 2));
+                            double rawVar = residual / signal;
+                            double prior = SCALE_PRIOR_SIGMA * SCALE_PRIOR_SIGMA;
+                            scale = Math.max(-0.1, Math.min(0.1, raw * prior / (prior + rawVar)));
+                            scaleEstimated = true;
+                        }
                     }
                 }
             }
@@ -171,6 +226,11 @@ public final class Aligner {
         System.arraycopy(a, 0, sh, 0, 3);
         System.arraycopy(b, 0, sxh, 0, 3);
         System.arraycopy(c, 0, lowPass, 0, 3);
+    }
+
+    /** Effective forward accelerometer scale error (measured = (1 + scale) * true), 0 until known. */
+    public double accelScale() {
+        return useScale && scaleEstimated ? scale : 0;
     }
 
     /** Current car-to-phone rotation estimate (columns are car axes in phone coordinates). */

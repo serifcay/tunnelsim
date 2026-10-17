@@ -60,7 +60,8 @@ public final class SimulationRun {
         CarResult result = new CarResult(car, truth, log);
         truthEvents(result, net, route);
 
-        Aligner aligner = new Aligner("TRUTH".equalsIgnoreCase(cfg.estimator.alignment) ? truth::mountAt : null);
+        Aligner aligner = new Aligner("TRUTH".equalsIgnoreCase(cfg.estimator.alignment) ? truth::mountAt : null,
+                cfg.estimator.accelScaleCalibration);
         List<Estimator> estimators = new ArrayList<>();
         List<Track> tracks = new ArrayList<>();
         List<DisplaySmoother> displays = new ArrayList<>();

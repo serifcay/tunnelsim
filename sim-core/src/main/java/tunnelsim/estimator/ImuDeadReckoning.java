@@ -68,7 +68,7 @@ public final class ImuDeadReckoning extends PathEstimator {
         if (!gnss.fresh(imu.t()) && Double.isNaN(outageStart)) {
             outageStart = imu.t();
         }
-        double v = Math.max(0, speed + (imu.aFwd() - bias) * dt);
+        double v = Math.max(0, speed + (imu.aFwd() - bias) / (1 + imu.accelScale()) * dt);
         offset = clampOffset(offset + 0.5 * (speed + v) * dt);
         speed = v;
     }

@@ -74,6 +74,32 @@ This file records how AI tools were used on this case study: what they suggested
 | Monte Carlo kept all runs in memory | Out-of-memory on the 7-minute scenarios | Keep a per-run digest |
 | Tunnel-length study plotted error *at the exit* | C and D looked flat with length: the light-sensor portal fix resets them just before the exit | Plot the largest in-tunnel error instead |
 
+### 2026-10-18: My question about speed in stop-and-go traffic
+
+**My input**
+- I noticed that in stop-and-go traffic the estimated speed drifted far from the real speed, and
+  asked how speed is computed from the accelerometer and whether it could be improved.
+
+**AI contribution**
+- Explained the pipeline. Then, instead of guessing, it measured the speed error with each error
+  source removed in turn. Alignment dominated.
+- Traced the "up" axis through the jam: it was re-estimated at every stop and jumped by up to 0.4°.
+- Predicted, and then confirmed with a new scenario (S11), that a stop on a slope corrupts the
+  alignment: 2.1 km errors. This was a design flaw in the AI's own aligner that none of the
+  original scenarios exposed, because none of them stopped on a slope.
+- Fixes, on my go-ahead:
+  1. Freeze "up" after the initial alignment.
+  2. A per-car accelerometer scale estimate.
+- Its first scale estimator (in the Kalman calibrator) was biased: the pull-away happens while the
+  forward axis is still converging. It moved the estimate into the alignment regression, corrected
+  for GNSS noise in the regressor, and added uncertainty-based shrinkage. Each step was compared
+  in Monte Carlo before keeping it.
+
+**Result**
+- D's in-tunnel rms in the jam (S4) went from 53 to 27 m.
+- The incident stop (S5) went from 37 to 11 m.
+- Stops on slopes (S11) went from 574 to 17 m.
+
 **Still open** (reported in the write-up, not hidden)
 - OBD fusion (D+E) is still over-confident in stop-and-go traffic.
 - A phone shift mid-tunnel (S7) is only partly handled.

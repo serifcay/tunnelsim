@@ -107,6 +107,7 @@ final class Studies {
         variants.put("no speed prior", c -> c.estimator.aiding.speedPrior = false);
         variants.put("no portal", c -> c.estimator.aiding.portal = false);
         variants.put("no cell", c -> c.estimator.aiding.cell = false);
+        variants.put("no accel scale", c -> c.estimator.accelScaleCalibration = false);
         variants.put("+ lateral acc", c -> c.estimator.aiding.lateralAccel = true);
         CategoryChart chart = new CategoryChartBuilder().width(1000).height(520)
                 .title("Particle filter ablation: median in-tunnel RMS error (" + runs + " runs)")

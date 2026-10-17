@@ -4,6 +4,8 @@ package tunnelsim.scenario;
 public class EstimatorConfig {
     /** ESTIMATED or TRUTH (use the true phone mount, to isolate estimator errors). */
     public String alignment = "ESTIMATED";
+    /** Apply the effective forward accelerometer scale learned by the alignment front-end. */
+    public boolean accelScaleCalibration = true;
     public int particles = 1000;
     /** Prior probability that the car follows the planned route at a fork. */
     public double pFollow = 0.8;

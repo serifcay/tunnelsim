@@ -1,0 +1,21 @@
+# S11: stop-and-go on a 3% climb and a full stop on the following 2% descent.
+# Tests that the alignment does not absorb the road slope at stops (it would then be counted twice).
+name: S11 stops on slopes
+description: 5 km straight tunnel, 3% up then 2% down; stop-and-go on the climb and a 45 s stop on the descent.
+seed: 11
+duration: 700
+road:
+  main:
+    - { type: straight, length: 1200 }
+    - { type: straight, length: 2500, grade: 0.03 }
+    - { type: straight, length: 2500, grade: -0.02 }
+    - { type: straight, length: 1000 }
+  tunnels:
+    - { from: 1200, to: 6200 }
+  traffic:
+    - { from: 1800, to: 3000, speed: 6 }
+cars:
+  - id: car1
+    events:
+      - { at: 1800, type: stopAndGo, length: 1200, speed: 10, stopTime: 8, goTime: 20 }
+      - { at: 4800, type: stop, duration: 45 }

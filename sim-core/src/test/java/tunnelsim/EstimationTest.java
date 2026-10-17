@@ -52,6 +52,16 @@ class EstimationTest {
     }
 
     @Test
+    void stopsOnSlopesDoNotCorruptTheAlignment() {
+        // Re-estimating "up" at a stop on a slope used to count the slope twice (km-level errors).
+        ScenarioConfig s11 = TruthAndSensorsTest.scenario("s11-stops-on-slopes.yaml");
+        s11.estimators = List.of("C", "D");
+        MonteCarlo.Result r = MonteCarlo.run(s11, 8);
+        assertThat(r.summaries().get("D").max()[0]).isLessThan(150);
+        assertThat(r.summaries().get("C").max()[0]).isLessThan(300);
+    }
+
+    @Test
     void particleFilterIsRoughlyConsistent() {
         ScenarioConfig s3 = TruthAndSensorsTest.scenario("s03-underwater.yaml");
         s3.estimators = List.of("D");

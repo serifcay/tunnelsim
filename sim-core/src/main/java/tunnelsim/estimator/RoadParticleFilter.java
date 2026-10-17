@@ -65,6 +65,7 @@ public final class RoadParticleFilter implements Estimator {
 
     // Block and window accumulators.
     private double blockAcc, blockYaw, blockLat, lastBlockT = Double.NaN;
+    private double lastAccelScale;
     private int blockCount, blockStationary;
     private double winYaw, winLat;
     private int winBlocks;
@@ -341,6 +342,7 @@ public final class RoadParticleFilter implements Estimator {
             return;
         }
         blockAcc += imu.aFwd();
+        lastAccelScale = imu.accelScale();
         blockYaw += imu.yawRate();
         blockLat += imu.aLat();
         blockStationary += imu.stationary() ? 1 : 0;
@@ -420,10 +422,11 @@ public final class RoadParticleFilter implements Estimator {
     private void propagate(double dt, double aF) {
         double sqdt = Math.sqrt(dt);
         double pFollow = cfg.pFollow;
+        double scale = 1 + lastAccelScale;
         for (int i = 0; i < n; i++) {
             Edge e = edges[edge[i]];
             double g = e.grade(s[i]);
-            double a = aF - ba[i] - MathUtil.G * g / Math.sqrt(1 + g * g);
+            double a = (aF - ba[i] - MathUtil.G * g / Math.sqrt(1 + g * g)) / scale;
             // Speed may go slightly negative in the state: clamping at zero would make particles
             // with a too-high accelerometer bias look perfectly stopped, and stop updates would
             // then select a biased bias. Position only ever moves forward.

@@ -17,12 +17,14 @@ import tunnelsim.util.MathUtil;
  *       minus map elevation at the GNSS-matched position.</li>
  * </ul>
  * Static parameters are a known weak spot of particle filters (resampling discards what was learned),
- * which is why this is done by a small Kalman filter instead.
+ * which is why this is done by a small Kalman filter instead. The filter only runs while GNSS is
+ * fresh: inside tunnels its map grade (taken at the last fix) would be wrong.
  */
 final class BiasCalibrator {
     private static final double Q_V = 0.12 * 0.12;
     private static final double Q_B = 0.0005 * 0.0005;
     private static final double TAU = 60;
+    private static final double FRESH = 2.0;
 
     private final RoadNetwork net;
     private double v, ba;
@@ -44,13 +46,13 @@ final class BiasCalibrator {
     void onImu(VehicleImu imu) {
         double dt = Double.isNaN(lastT) ? 0 : imu.t() - lastT;
         lastT = imu.t();
-        if (!ready || dt <= 0) {
-            return;
-        }
         if (imu.mountDisturbed()) {
             pbb += 0.1 * 0.1;
         }
-        double a = imu.aFwd() - ba - MathUtil.G * grade / Math.sqrt(1 + grade * grade);
+        if (!ready || dt <= 0 || imu.t() - lastFixT > FRESH) {
+            return;
+        }
+        double a = (imu.aFwd() - ba - MathUtil.G * grade / Math.sqrt(1 + grade * grade)) / (1 + imu.accelScale());
         v = v + a * dt;
         // F = [[1, -dt], [0, 1]]
         double nvv = pvv - 2 * dt * pvb + dt * dt * pbb + Q_V * dt;
@@ -75,6 +77,11 @@ final class BiasCalibrator {
         if (!ready) {
             v = fix.speed();
             ready = true;
+        } else if (fix.t() - lastFixT > FRESH) {
+            // Back from an outage: restart the speed state, keep the calibration.
+            v = fix.speed();
+            pvv = 1;
+            pvb = 0;
         } else {
             double sv = Math.max(0.1, fix.speedAccuracy());
             update(fix.speed() - v, sv * sv);

@@ -93,6 +93,7 @@ Snapshot mode, for figures:
 | `s08-twin-tunnels` | Two 800 m tunnels 150 m apart |
 | `s09-stale-traffic` | S4 jam, but traffic data wrongly reports free flow |
 | `s10-three-cars` | Three cars on the S2 road: fast, cautious with a stop, missed exit |
+| `s11-stops-on-slopes` | Stop-and-go on a 3% climb and a 45 s stop on a 2% descent (alignment must not absorb the slope) |
 | `e1-ble`, `e2-obd`, `e3-ble-failures` | Option E: BLE every 100 m; OBD speed in the jam; BLE with 30% of beacons dead |
 
 ## Repository layout
