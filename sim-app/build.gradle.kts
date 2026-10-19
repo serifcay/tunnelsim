@@ -19,3 +19,8 @@ application {
 tasks.named<JavaExec>("run") {
     workingDir = rootProject.projectDir
 }
+
+dependencies {
+    // Pure-Java H.264/MP4 encoder, used only by the --record mode.
+    implementation("org.jcodec:jcodec-javase:0.2.5")
+}

@@ -64,6 +64,9 @@ import java.util.function.Function;
  *
  * <p>Snapshot mode for figures and headless checks:
  * {@code --snapshot=out.png --scenario=scenarios/s02-curved-exit.yaml --time=180 [--size=1600x1000] [--tab=Error]}
+ * <p>Record mode, renders a video of the simulator playing a scenario:
+ * {@code --record=out.mp4 --scenario=... --from=55 --to=180 [--fps=15] [--speed=4] [--car=0]
+ * [--gif=preview.gif --gif-width=800 --gif-every=3]}
  */
 public class Main extends Application {
     private static final Path SCENARIO_DIR = Path.of("scenarios");
@@ -154,6 +157,10 @@ public class Main extends Application {
                 .orElse(scenarioBox.getItems().isEmpty() ? null : scenarioBox.getItems().get(0));
         if (args.containsKey("snapshot")) {
             snapshotMode(stage, scene, initial);
+            return;
+        }
+        if (args.containsKey("record")) {
+            recordMode(stage, initial);
             return;
         }
         stage.show();
@@ -359,7 +366,7 @@ public class Main extends Application {
     }
 
     private void loadScenario(Path file) {
-        if (args.containsKey("snapshot")) {
+        if (args.containsKey("snapshot") || args.containsKey("record")) {
             return;
         }
         try {
@@ -527,7 +534,7 @@ public class Main extends Application {
             cause = cause.getCause();
         }
         status.setText(title);
-        if (args.containsKey("snapshot")) {
+        if (args.containsKey("snapshot") || args.containsKey("record")) {
             ex.printStackTrace();
             return;
         }
@@ -542,6 +549,103 @@ public class Main extends Application {
             return "-";
         }
         return Math.abs(v) >= 100 ? String.format(Locale.ROOT, "%.0f", v) : String.format(Locale.ROOT, "%.1f", v);
+    }
+
+    // ---- Record mode ----------------------------------------------------------------------
+
+    /**
+     * Plays the scenario from --from to --to at --speed and writes one frame per 1/--fps s of video:
+     * an MP4 (JCodec, pure Java) and optionally a down-scaled looping GIF preview.
+     */
+    private void recordMode(Stage stage, Path scenario) {
+        try {
+            prepareHeadless(scenario);
+            stage.show();
+            setResult(SimulationRun.run(ScenarioLoader.copy(working)));
+            int car = Integer.parseInt(args.getOrDefault("car", "0"));
+            if (car > 0 && car < carBox.getItems().size()) {
+                carBox.setValue(carBox.getItems().get(car));
+            }
+            double from = Double.parseDouble(args.getOrDefault("from", "0"));
+            double to = Math.min(state.car().truth.duration(), Double.parseDouble(args.getOrDefault("to", "1e9")));
+            int fps = Integer.parseInt(args.getOrDefault("fps", "15"));
+            double speed = Double.parseDouble(args.getOrDefault("speed", "4"));
+            int frames = (int) Math.floor((to - from) / speed * fps) + 1;
+            org.jcodec.api.awt.AWTSequenceEncoder mp4 =
+                    org.jcodec.api.awt.AWTSequenceEncoder.createSequenceEncoder(new File(args.get("record")), fps);
+            int gifEvery = Integer.parseInt(args.getOrDefault("gif-every", "3"));
+            int gifWidth = Integer.parseInt(args.getOrDefault("gif-width", "800"));
+            GifWriter gif = args.containsKey("gif") ? new GifWriter(new File(args.get("gif")), 1000 * gifEvery / fps) : null;
+            System.out.printf("recording %d frames (%.0f-%.0f s at %.0fx, %d fps)%n", frames, from, to, speed, fps);
+
+            int[] k = {0};
+            new AnimationTimer() {
+                @Override
+                public void handle(long now) {
+                    try {
+                        if (k[0] >= frames) {
+                            stop();
+                            mp4.finish();
+                            if (gif != null) {
+                                gif.close();
+                            }
+                            System.out.println("video written to " + args.get("record"));
+                            Platform.exit();
+                            return;
+                        }
+                        seek(from + k[0] * speed / fps);
+                        redrawAll();
+                        java.awt.image.BufferedImage frame =
+                                SwingFXUtils.fromFXImage(stage.getScene().snapshot(null), null);
+                        java.awt.image.BufferedImage rgb = new java.awt.image.BufferedImage(
+                                frame.getWidth() & ~1, frame.getHeight() & ~1, java.awt.image.BufferedImage.TYPE_3BYTE_BGR);
+                        rgb.getGraphics().drawImage(frame, 0, 0, null);
+                        mp4.encodeImage(rgb);
+                        if (gif != null && k[0] % gifEvery == 0) {
+                            int h = gifWidth * rgb.getHeight() / rgb.getWidth();
+                            java.awt.image.BufferedImage small =
+                                    new java.awt.image.BufferedImage(gifWidth, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+                            java.awt.Graphics2D g = small.createGraphics();
+                            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                                    java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                            g.drawImage(rgb, 0, 0, gifWidth, h, null);
+                            g.dispose();
+                            gif.add(small);
+                        }
+                        if (k[0] % 50 == 0) {
+                            System.out.printf("  frame %d/%d%n", k[0], frames);
+                        }
+                        k[0]++;
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        stop();
+                        Platform.exit();
+                    }
+                }
+            }.start();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            Platform.exit();
+        }
+    }
+
+    /** Loads a scenario for snapshot/record mode without the interactive auto-run. */
+    private void prepareHeadless(Path scenario) {
+        ScenarioConfig cfg = ScenarioLoader.load(scenario);
+        scenarioFile = scenario;
+        scenarioBox.getItems().stream().filter(p -> p.getFileName().equals(scenario.getFileName())).findFirst()
+                .ifPresent(scenarioBox::setValue);
+        base = cfg;
+        working = ScenarioLoader.copy(cfg);
+        state.visible.addAll(working.estimators);
+        sortVisible();
+        estimatorBoxes.forEach((id, box) -> box.setSelected(state.visible.contains(id)));
+        params.load(working);
+        String tab = args.get("tab");
+        if (tab != null) {
+            charts.getTabs().stream().filter(t -> t.getText().equalsIgnoreCase(tab)).findFirst()
+                    .ifPresent(t -> charts.getSelectionModel().select(t));
+        }
     }
 
     // ---- Snapshot mode --------------------------------------------------------------------

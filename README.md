@@ -17,6 +17,11 @@ filter D (green) follows the car onto the main road within a few seconds, once t
 is missing from the gyro. A, B and C stay on the
 planned ramp ("WRONG BRANCH") until GPS returns.*
 
+**Screen recording** (30 s, S14: three exits in a climbing, curved tunnel):
+[MP4](docs/media/s14-multi-exit.mp4) · preview below.
+
+![S14 recording preview](docs/media/s14-multi-exit-preview.gif)
+
 | Document | Content |
 |---|---|
 | [docs/WRITEUP.md](docs/WRITEUP.md) | Approach, assumptions, what is simulated, results, limitations, next steps with real devices |
@@ -85,6 +90,10 @@ announcement points for it start right at exit 1, which the filter must reject f
 
 Snapshot mode, for figures:
 `./gradlew :sim-app:run --args="--snapshot=out.png --scenario=scenarios/s02-curved-exit.yaml --time=180"`
+
+Record mode, renders the simulator playing a scenario to MP4 (pure Java, via JCodec) plus an
+optional GIF preview:
+`./gradlew :sim-app:run --args="--record=out.mp4 --gif=preview.gif --scenario=scenarios/s14-multi-exit-uphill.yaml --from=58 --to=176 --speed=4 --fps=15 --tab=Error"`
 
 ## Estimators
 
