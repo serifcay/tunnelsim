@@ -22,7 +22,7 @@ import java.util.List;
  * @param exitError        absolute error at the moment the car leaves each tunnel [m]
  * @param worstCallout     largest |timing error| of fired callouts [s]
  * @param lateCallouts     callouts that fired late or never
- * @param branchDecision   seconds after the car passes a fork until P(true branch) >= 0.9
+ * @param branchDecision   seconds after the car passes a fork until P(true branch) >= 0.9 for good
  * @param wrongBranchShown seconds the displayed marker sat on the wrong branch
  * @param rerouteLatency   seconds from leaving the route until the reroute event
  * @param falseReroute     a reroute was raised although the car stayed on the route
@@ -99,18 +99,30 @@ public record TrackMetrics(String estimator, double rmsTunnel, double maxTunnel,
         double decision = Double.NaN, reroute = Double.NaN;
         boolean falseReroute = false;
         double tOffRoute = Double.NaN;
-        for (double[] fork : car.forkPassages) {
+        for (int fi = 0; fi < car.forkPassages.size(); fi++) {
+            double[] fork = car.forkPassages.get(fi);
             double tf = fork[0];
+            // The window ends at the next fork the car passes (or after 60 s).
+            double windowEnd = fi + 1 < car.forkPassages.size()
+                    ? Math.min(tf + 60, car.forkPassages.get(fi + 1)[0]) : tf + 60;
             boolean onRoute = fork[1] > 0;
             if (!onRoute && Double.isNaN(tOffRoute)) {
                 tOffRoute = tf;
             }
+            // Time until P(branch the car took at this fork) reaches 0.9 and stays there (until the
+            // next fork). Taking the first moment above 0.9 would be flattering: while the particle
+            // cloud still lags behind the car, all of it is before the fork, which counts as
+            // consistent, and the decision only really happens once the cloud reaches the fork.
+            // The per-fork probability ignores later forks, which the front of the cloud may reach
+            // before the car does.
+            double lastBelow = Double.NaN;
             for (Track.Sample s : track.samples) {
-                if (s.t() >= tf && s.pTruthPath() >= 0.9) {
-                    decision = Double.isNaN(decision) ? s.t() - tf : Math.max(decision, s.t() - tf);
-                    break;
+                if (s.t() >= tf && s.t() < windowEnd && s.estimate().valid() && s.pTruthBranch() < 0.9) {
+                    lastBelow = s.t();
                 }
             }
+            double dt = Double.isNaN(lastBelow) ? 0 : lastBelow + tunnelsim.engine.RunConstants.RECORD_DT - tf;
+            decision = Double.isNaN(decision) ? dt : Math.max(decision, dt);
         }
         for (RunEvent ev : track.events) {
             if (ev.type() == RunEvent.Type.REROUTE) {

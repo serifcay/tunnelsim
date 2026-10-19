@@ -6,6 +6,12 @@ public class EstimatorConfig {
     public String alignment = "ESTIMATED";
     /** Apply the effective forward accelerometer scale learned by the alignment front-end. */
     public boolean accelScaleCalibration = true;
+    /**
+     * After phone handling, re-estimate the phone's "up" axis at the next stop with the road slope
+     * (map, at the best estimator's position) removed. Without slope correction a stop on a slope
+     * would be absorbed into "up" and then subtracted again from the map (counted twice).
+     */
+    public boolean slopeAwareRealignment = true;
     public int particles = 1000;
     /** Prior probability that the car follows the planned route at a fork. */
     public double pFollow = 0.8;
@@ -37,6 +43,9 @@ public class EstimatorConfig {
         public double baroCorrelationTime = 20;
         /** Barometer update interval [s]. */
         public double baroInterval = 1.0;
+        /** Barometric vertical speed: window [s] and std-dev of the altitude change over it [m]. */
+        public double verticalSpeedWindow = 5.0;
+        public double sigmaVerticalChange = 0.25;
         /** Curvature matching window [s]; one update per window. */
         public double curvatureWindow = 1.0;
         /**
@@ -52,6 +61,8 @@ public class EstimatorConfig {
         /** Off by default: body roll in curves biases lateral acceleration by several percent. */
         public boolean lateralAccel = false;
         public boolean baro = true;
+        /** Altitude change over a few seconds vs speed x map slope (speed information on slopes). */
+        public boolean baroVerticalSpeed = true;
         public boolean zupt = true;
         public boolean speedPrior = true;
         public boolean portal = true;

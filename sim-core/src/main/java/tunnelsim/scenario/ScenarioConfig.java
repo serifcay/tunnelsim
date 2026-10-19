@@ -136,6 +136,8 @@ public class ScenarioConfig {
         public double stopTime = 10;
         public double goTime = 15;
         public double decel = 6;
+        /** mountShift only: seconds after reaching {@code at} (e.g. to shift the phone during a stop). */
+        public double afterSeconds = 0;
         public double yawDeg = 0;
         public double pitchDeg = 0;
         public double rollDeg = 0;

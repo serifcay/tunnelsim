@@ -46,6 +46,7 @@ public final class Driver {
     // Event state.
     private final List<EventConfig> events;
     private final boolean[] done;
+    private final double[] reachedAt;
     private double holdUntil = -1;
     private int holdingEvent = -1;
     private int hardBrakeEvent = -1;
@@ -62,6 +63,8 @@ public final class Driver {
         this.events = new ArrayList<>(car.events);
         this.events.sort(Comparator.comparingDouble(e -> e.at));
         this.done = new boolean[events.size()];
+        this.reachedAt = new double[events.size()];
+        java.util.Arrays.fill(reachedAt, Double.NaN);
     }
 
     /** Decides at every fork whether this driver follows the route. */
@@ -105,10 +108,14 @@ public final class Driver {
                 break; // arrived
             }
 
-            // Mount shift events.
+            // Mount shift events (optionally some seconds after reaching the position).
             for (int i = 0; i < events.size(); i++) {
                 EventConfig e = events.get(i);
-                if (!done[i] && "mountShift".equals(e.type) && off >= e.at) {
+                if (!done[i] && "mountShift".equals(e.type) && off >= e.at && Double.isNaN(reachedAt[i])) {
+                    reachedAt[i] = t;
+                }
+                if (!done[i] && "mountShift".equals(e.type) && !Double.isNaN(reachedAt[i])
+                        && t >= reachedAt[i] + e.afterSeconds) {
                     done[i] = true;
                     // The phone rotates smoothly over half a second, so the gyroscope sees the motion.
                     double[] start = mount;

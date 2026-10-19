@@ -63,7 +63,7 @@ public class BatchMain {
             case "study" -> {
                 Studies st = new Studies(runs, Path.of("results"));
                 List<Path> all = ScenarioLoader.list(Path.of("scenarios"));
-                List<Path> core = all.stream().filter(p -> List.of("s02", "s03", "s04", "s11").stream()
+                List<Path> core = all.stream().filter(p -> List.of("s02", "s03", "s04", "s11", "s12", "s16").stream()
                         .anyMatch(p.getFileName().toString()::startsWith)).toList();
                 String name = study == null ? "all" : study;
                 if (name.equals("curves") || name.equals("all")) {

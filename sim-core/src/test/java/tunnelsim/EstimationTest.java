@@ -85,6 +85,27 @@ class EstimationTest {
     }
 
     @Test
+    void phoneAdjustedAtAStopOnASlopeIsRealignedWithTheSlopeRemoved() {
+        ScenarioConfig s16 = TruthAndSensorsTest.scenario("s16-phone-adjusted-at-stop.yaml");
+        s16.estimators = List.of("D");
+        double withSlope = MonteCarlo.run(s16, 8).summaries().get("D").rms()[0];
+        s16.estimator.slopeAwareRealignment = false;
+        double absorbed = MonteCarlo.run(s16, 8).summaries().get("D").rms()[0];
+        assertThat(withSlope).isLessThan(25);
+        assertThat(withSlope).isLessThan(absorbed);
+    }
+
+    @Test
+    void barometricVerticalSpeedHelpsOnSlopes() {
+        ScenarioConfig s3 = TruthAndSensorsTest.scenario("s03-underwater.yaml");
+        s3.estimators = List.of("D");
+        double with = MonteCarlo.run(s3, 8).summaries().get("D").rms()[0];
+        s3.estimator.aiding.baroVerticalSpeed = false;
+        double without = MonteCarlo.run(s3, 8).summaries().get("D").rms()[0];
+        assertThat(with).isLessThan(without);
+    }
+
+    @Test
     void particleFilterIsRoughlyConsistent() {
         ScenarioConfig s3 = TruthAndSensorsTest.scenario("s03-underwater.yaml");
         s3.estimators = List.of("D");

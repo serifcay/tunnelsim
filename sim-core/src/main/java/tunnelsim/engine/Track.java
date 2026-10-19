@@ -12,10 +12,12 @@ public final class Track {
      * @param error          signed along-road error of the estimate [m] (+ = ahead of the car)
      * @param wrongBranch    estimate on a different branch than the car
      * @param pTruthPath     probability the estimator gives to the car's true path
+     * @param pTruthBranch   probability of the branch the car took at the last fork it passed
      * @param displayOffset  path offset of the displayed marker on {@code displayLeaf}'s path
      * @param displayError   signed along-road error of the displayed marker [m]
      */
     public record Sample(double t, Estimate estimate, double error, boolean wrongBranch, double pTruthPath,
+                         double pTruthBranch,
                          int displayLeaf, double displayOffset, double displayError, boolean displayWrong) {
     }
 

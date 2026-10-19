@@ -146,8 +146,41 @@ This file records how AI tools were used on this case study: what they suggested
   announcement points) and a regression test.
 
 **Result**
-- D tells the exits apart: the wrong exit is recognised after 1.0 s (A and C: 13.5 s).
+- D tells the exits apart: the wrong exit is recognised after 1.0 s (A and C: 13.5 s). This
+  number came from the flattering metric corrected on 2026-10-20; the honest figure is 1.5 s.
 - Announcement timing for exit 2: 0.3 s.
+
+### 2026-10-20: Remaining error on slopes and after phone shifts; calibrating sensors while running
+
+**My input**
+- I felt the phone-shift and slope scenarios still had extra error, and asked whether there was
+  room for improvement.
+- I asked whether sensors could be calibrated against each other while running.
+- I asked for the expected gain per scenario, so I could choose. I chose vertical speed and
+  slope-aware re-alignment.
+
+**AI contribution**
+- Measured before proposing. Two of its own hypotheses were ruled out: accelerometer scale on
+  gravity, and tunnel pressure disturbances. The real limit on long constant slopes is
+  information: the barometer is the only anchor.
+- Prototyped barometric vertical speed and measured every scenario.
+- Bounded gyro-feedback calibration with a perfect-gyro "oracle" (≤ 2 m gain), and recommended
+  skipping it.
+- Pointed out a latent weak spot: after phone handling, the next stop on a slope re-introduced the
+  slope-counted-twice error.
+- Implemented both chosen changes, added S16 (phone adjusted at a stop on a slope) and tests.
+
+**Result (D, median in-tunnel rms, 40 runs)**
+- With vertical speed: S3 18 → 13 m, S7 13 → 10 m, S12 19 → 15 m (worst 5%: 93 → 53 m),
+  S13 13 → 11 m.
+- S16 with slope-aware re-alignment: 13 m, against 31 m with the old behaviour; a phone adjusted
+  at a stop now costs about 1 m.
+
+- When the full study showed the S6 branch decision "slowing" from 0.5 to 2.5 s with vertical speed,
+  the AI did not tune vertical speed away. A softer setting did not change it, which pointed at the
+  metric. The metric took the first moment P(true branch) ≥ 0.9, which a particle cloud lagging
+  behind the car reaches trivially. It was replaced by "≥ 0.9 for good, per fork". Honest numbers:
+  S6 3.9 s (vertical speed actually helps: 4.7 s without it); S14/S15 1.5 s.
 
 **Still open** (reported in the write-up, not hidden)
 - OBD fusion (D+E) is still over-confident in stop-and-go traffic.

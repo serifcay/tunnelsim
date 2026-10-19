@@ -195,6 +195,15 @@ public final class MapAidedEkf extends PathEstimator {
         return gaussRemaining(x[0], Math.sqrt(Math.max(0, p[0][0])), targetOffset, d);
     }
 
+    @Override
+    public double gradeAtEstimate() {
+        if (!initialised) {
+            return Double.NaN;
+        }
+        MapPosition p = position(x[0]);
+        return net.edge(p.edge()).grade(p.s());
+    }
+
     public double accelBias() {
         return x[2];
     }

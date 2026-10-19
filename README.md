@@ -13,7 +13,8 @@ This repository contains:
 ![Simulator](docs/figures/simulator.png)
 
 *S6: the route takes the exit inside the tunnel, but the driver stays on the main road. The particle
-filter D (green) follows the car onto the main road within about a second. A, B and C stay on the
+filter D (green) follows the car onto the main road within a few seconds, once the ramp's curve
+is missing from the gyro. A, B and C stay on the
 planned ramp ("WRONG BRANCH") until GPS returns.*
 
 | Document | Content |
@@ -92,7 +93,7 @@ Snapshot mode, for figures:
 | **A** | Constant velocity | Keeps the last GNSS speed along the route. Roughly what many apps do. |
 | **B** | IMU dead reckoning | Integrates forward acceleration, with its bias calibrated before the tunnel |
 | **C** | Map-aided EKF on the route | Accelerometer with map-grade correction, stop detection, traffic speed prior, light-based portal detection, cell handovers |
-| **D** | **Particle filter on the road network** | Everything C uses, plus curvature matching (gyro yaw rate vs speed × map curvature) and barometric elevation matching. Multi-hypothesis at forks. |
+| **D** | **Particle filter on the road network** | Everything C uses, plus curvature matching (gyro yaw rate vs speed × map curvature), barometric elevation matching and barometric vertical speed (altitude change vs speed × map slope). Multi-hypothesis at forks. |
 | **D+E** | D + infrastructure/vehicle data | BLE beacons and/or OBD-II vehicle speed |
 
 ## Scenarios
@@ -111,6 +112,7 @@ Snapshot mode, for figures:
 | `s10-three-cars` | Three cars on the S2 road: fast, cautious with a stop, missed exit |
 | `s11-stops-on-slopes` | Stop-and-go on a 3% climb and a 45 s stop on a 2% descent (alignment must not absorb the slope) |
 | `s12-mount-shift-uphill`, `s13-mount-shift-downhill` | The S7 phone shift in a 3.5 km tunnel climbing / descending at 4% |
+| `s16-phone-adjusted-at-stop` | The driver adjusts the phone while stopped in a jam on a 3% climb (re-alignment must remove the slope) |
 | `s14-multi-exit-uphill`, `s15-multi-exit-downhill` | 4 km curved tunnel climbing / descending at 3.5% with **three exits**; the route takes exit 2 (in the curve); a second car takes exit 1 by mistake |
 | `e1-ble`, `e2-obd`, `e3-ble-failures` | Option E: BLE every 100 m; OBD speed in the jam; BLE with 30% of beacons dead |
 

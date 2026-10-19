@@ -1,0 +1,25 @@
+# S16: the driver adjusts the phone in its holder while stopped in a jam on a 3% climb.
+# A stop right after handling is when the phone's tilt can be re-measured from gravity, but only
+# with the road slope removed (otherwise the slope is absorbed into "up" and counted twice).
+name: S16 phone adjusted at a stop
+description: 3.8 km tunnel climbing 3% with stop-and-go; the phone is rotated 27 deg 12 s into a 40 s stop on the slope.
+seed: 16
+duration: 560
+road:
+  main:
+    - { type: straight, length: 1200 }
+    - { type: clothoid, length: 100, curvatureEnd: 0.001, grade: 0.03 }
+    - { type: arc, length: 600, curvature: 0.001, grade: 0.03 }
+    - { type: clothoid, length: 100, curvatureEnd: 0.0, grade: 0.03 }
+    - { type: straight, length: 2800, grade: 0.03 }
+    - { type: straight, length: 1000 }
+  tunnels:
+    - { from: 1200, to: 5000 }
+  traffic:
+    - { from: 1800, to: 3000, speed: 6 }
+cars:
+  - id: car1
+    events:
+      - { at: 1800, type: stopAndGo, length: 1200, speed: 10, stopTime: 8, goTime: 20 }
+      - { at: 3400, type: stop, duration: 40 }
+      - { at: 3390, type: mountShift, afterSeconds: 12, yawDeg: 25, pitchDeg: 10 }

@@ -60,6 +60,10 @@ public final class RoadParticleFilter implements Estimator {
     private double[] s, v, ba, ks, ko, accel, logw;
     private final BiasCalibrator calibrator;
     private double[] predYaw, predLat;
+    /** Per particle: altitude change predicted since the start of the vertical-speed window [m]. */
+    private double[] predDz;
+    private double windowStartAltitude = Double.NaN;
+    private double windowStartT;
     private boolean initialised;
     private double t;
 
@@ -103,6 +107,7 @@ public final class RoadParticleFilter implements Estimator {
         logw = new double[n];
         predYaw = new double[n];
         predLat = new double[n];
+        predDz = new double[n];
         for (Beacon b : net.beacons()) {
             beaconsById.put(b.id(), b);
         }
@@ -257,7 +262,11 @@ public final class RoadParticleFilter implements Estimator {
         calibrator.onBaroAltitude(h, fresh);
         double offset = calibrator.baroOffset();
         if (fresh || Double.isNaN(offset)) {
+            windowStartAltitude = Double.NaN;
             return; // GNSS pins the position better; the barometer is used inside tunnels
+        }
+        if (aid.baroVerticalSpeed) {
+            verticalSpeedUpdate(h);
         }
         double nu = 4;
         // Down-weight for correlated errors: n updates per correlation time carry about one update's information.
@@ -267,6 +276,33 @@ public final class RoadParticleFilter implements Estimator {
             logw[i] += -temper * (nu + 1) / 2 * Math.log1p(e * e / nu);
         }
         normaliseAndResample();
+    }
+
+    /**
+     * Barometric vertical speed: the altitude change over a few seconds against each particle's
+     * predicted change (distance travelled times map slope). It carries speed information on slopes
+     * and is insensitive to slowly varying pressure offsets (weather, tunnel entry step), which the
+     * absolute altitude match has to be down-weighted for.
+     */
+    private void verticalSpeedUpdate(double h) {
+        if (Double.isNaN(windowStartAltitude)) {
+            windowStartAltitude = h;
+            windowStartT = t;
+            java.util.Arrays.fill(predDz, 0);
+            return;
+        }
+        if (t - windowStartT < pf.verticalSpeedWindow - 1e-6) {
+            return;
+        }
+        double dh = h - windowStartAltitude;
+        double nu = 4;
+        for (int i = 0; i < n; i++) {
+            double e = (dh - predDz[i]) / pf.sigmaVerticalChange;
+            logw[i] += -(nu + 1) / 2 * Math.log1p(e * e / nu);
+        }
+        windowStartAltitude = h;
+        windowStartT = t;
+        java.util.Arrays.fill(predDz, 0);
     }
 
     private void portalUpdate() {
@@ -432,7 +468,9 @@ public final class RoadParticleFilter implements Estimator {
             // with a too-high accelerometer bias look perfectly stopped, and stop updates would
             // then select a biased bias. Position only ever moves forward.
             double vn = Math.max(-2, v[i] + a * dt + rng.gaussian(pf.sigmaV * sqdt));
-            s[i] += Math.max(0, 0.5 * (v[i] + vn)) * dt;
+            double ds = Math.max(0, 0.5 * (v[i] + vn)) * dt;
+            s[i] += ds;
+            predDz[i] += ds * g / Math.sqrt(1 + g * g);
             v[i] = vn;
             accel[i] = a;
             ba[i] += rng.gaussian(pf.sigmaBias * sqdt);
@@ -486,6 +524,7 @@ public final class RoadParticleFilter implements Estimator {
         int[] ne = new int[n];
         double[] ns = new double[n], nv = new double[n], nba = new double[n], nks = new double[n], nko = new double[n];
         double[] nacc = new double[n];
+        double[] ndz = new double[n];
         double[] npy = new double[n], npl = new double[n];
         double step = 1.0 / n;
         double u = rng.uniform() * step;
@@ -503,6 +542,7 @@ public final class RoadParticleFilter implements Estimator {
             nks[i] = ks[j] + rng.gaussian(0.0005);
             nko[i] = ko[j] + rng.gaussian(0.0002);
             nacc[i] = accel[j];
+            ndz[i] = predDz[j];
             npy[i] = predYaw[j];
             npl[i] = predLat[j];
         }
@@ -513,6 +553,7 @@ public final class RoadParticleFilter implements Estimator {
         ks = nks;
         ko = nko;
         accel = nacc;
+        predDz = ndz;
         // Curvature window accumulators travel with the particles.
         System.arraycopy(npy, 0, predYaw, 0, n);
         System.arraycopy(npl, 0, predLat, 0, n);
@@ -706,6 +747,21 @@ public final class RoadParticleFilter implements Estimator {
     }
 
     @Override
+    public double probOnSubtree(int root) {
+        if (!initialised) {
+            return 0;
+        }
+        double[] w = weights();
+        double p = 0;
+        for (int i = 0; i < n; i++) {
+            if (net.isAncestorOrSelf(root, edge[i]) || net.isAncestorOrSelf(edge[i], root)) {
+                p += w[i];
+            }
+        }
+        return p;
+    }
+
+    @Override
     public double probOnPath(int leaf) {
         if (!initialised) {
             return 0;
@@ -718,6 +774,15 @@ public final class RoadParticleFilter implements Estimator {
             }
         }
         return p;
+    }
+
+    @Override
+    public double gradeAtEstimate() {
+        if (!initialised) {
+            return Double.NaN;
+        }
+        Estimate e = estimate();
+        return edges[e.edge()].grade(e.s());
     }
 
     /** Mean accelerometer bias of the particle cloud (for diagnostics). */

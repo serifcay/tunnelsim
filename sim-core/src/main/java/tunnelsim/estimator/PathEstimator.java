@@ -84,6 +84,11 @@ abstract class PathEstimator implements Estimator {
     }
 
     @Override
+    public double probOnSubtree(int edge) {
+        return net.isAncestorOrSelf(edge, leaf) || net.isAncestorOrSelf(leaf, edge) ? 1 : 0;
+    }
+
+    @Override
     public double probOnPath(int otherLeaf) {
         return net.isAncestorOrSelf(leaf, otherLeaf) || net.isAncestorOrSelf(otherLeaf, leaf) ? 1 : 0;
     }

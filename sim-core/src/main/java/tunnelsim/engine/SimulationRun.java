@@ -81,6 +81,18 @@ public final class SimulationRun {
             rerouted.add(new boolean[1]);
         }
 
+        // Slope source for re-aligning the phone at stops after handling: the most capable estimator.
+        for (String preferred : List.of("D+E", "D", "C")) {
+            int k = cfg.estimators.indexOf(preferred);
+            if (k >= 0) {
+                aligner.setGradeProvider(estimators.get(k)::gradeAtEstimate, cfg.estimator.slopeAwareRealignment);
+                break;
+            }
+        }
+        if (!cfg.estimators.contains("D+E") && !cfg.estimators.contains("D") && !cfg.estimators.contains("C")) {
+            aligner.setGradeProvider(null, cfg.estimator.slopeAwareRealignment);
+        }
+
         double nextRecord = 0;
         double end = truth.duration();
         for (SensorEvent e : log.events()) {
@@ -135,6 +147,12 @@ public final class SimulationRun {
             long t0 = System.nanoTime();
             Estimate e = est.estimate();
             double pTruth = est.probOnPath(truth.leaf);
+            double pBranch = 1;
+            for (double[] fp : result.forkPassages) {
+                if (fp[0] <= t) {
+                    pBranch = est.probOnSubtree((int) fp[2]);
+                }
+            }
             track.nanos += System.nanoTime() - t0;
 
             DisplaySmoother display = displays.get(k);
@@ -152,7 +170,7 @@ public final class SimulationRun {
                 dispErr = pe.meters();
                 dispWrong = pe.wrongBranch();
             }
-            track.samples.add(new Track.Sample(t, e, err, wrong, pTruth, display.valid() ? display.leaf() : -1,
+            track.samples.add(new Track.Sample(t, e, err, wrong, pTruth, pBranch, display.valid() ? display.leaf() : -1,
                     display.offset(), dispErr, dispWrong));
 
             if (e.valid()) {

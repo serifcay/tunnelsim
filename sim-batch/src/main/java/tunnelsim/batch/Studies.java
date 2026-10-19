@@ -103,11 +103,13 @@ final class Studies {
         variants.put("all", c -> { });
         variants.put("no curvature", c -> c.estimator.aiding.curvature = false);
         variants.put("no baro", c -> c.estimator.aiding.baro = false);
+        variants.put("no vertical speed", c -> c.estimator.aiding.baroVerticalSpeed = false);
         variants.put("no stops", c -> c.estimator.aiding.zupt = false);
         variants.put("no speed prior", c -> c.estimator.aiding.speedPrior = false);
         variants.put("no portal", c -> c.estimator.aiding.portal = false);
         variants.put("no cell", c -> c.estimator.aiding.cell = false);
         variants.put("no accel scale", c -> c.estimator.accelScaleCalibration = false);
+        variants.put("slope absorbed at stops", c -> c.estimator.slopeAwareRealignment = false);
         variants.put("+ lateral acc", c -> c.estimator.aiding.lateralAccel = true);
         CategoryChart chart = new CategoryChartBuilder().width(1000).height(520)
                 .title("Particle filter ablation: median in-tunnel RMS error (" + runs + " runs)")

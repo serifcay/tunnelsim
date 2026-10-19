@@ -5,6 +5,7 @@ import tunnelsim.sensor.SensorEvent.ImuSample;
 import tunnelsim.util.Rot;
 
 import java.util.function.DoubleFunction;
+import java.util.function.DoubleSupplier;
 
 /**
  * Estimates how the phone sits in the car and rotates IMU samples into the car frame.
@@ -25,7 +26,10 @@ import java.util.function.DoubleFunction;
  *       acceleration to learn from the slope is noisy, so it is shrunk towards 0 by its own
  *       statistical uncertainty (prior: 0 +- 3%).</li>
  *   <li><b>Handling</b>: when the gyro shows a rotation far faster than a car can turn, the phone is
- *       moving in its mount; the estimated axes are rotated along with the gyro.</li>
+ *       moving in its mount; the estimated axes are rotated along with the gyro. At the next stop
+ *       "up" is re-estimated from gravity <b>with the road slope removed</b>: the slope comes from the
+ *       map at the best estimator's position (a stop on a slope must not be absorbed into "up").
+ *       Without a slope source the gyro-tracked alignment is kept.</li>
  * </ul>
  * In TRUTH mode the true mount is used, to separate alignment errors from estimator errors.
  */
@@ -65,9 +69,18 @@ public final class Aligner {
     private final double[] sxh = new double[3];
 
     private final boolean useScale;
+    private boolean slopeAware = true;
+    private DoubleSupplier gradeProvider;
+    private boolean handled;
 
     public Aligner(DoubleFunction<double[]> trueMount) {
         this(trueMount, true);
+    }
+
+    /** Road grade at the car's estimated position, used to re-align at stops after handling. */
+    public void setGradeProvider(DoubleSupplier provider, boolean slopeAware) {
+        this.gradeProvider = provider;
+        this.slopeAware = slopeAware;
     }
 
     /** @param useScale report the learned forward scale to the estimators (false: always 0) */
@@ -104,6 +117,7 @@ public final class Aligner {
                 // The phone was handled: allow "up" to be re-estimated at the next opportunity.
                 upLocked = false;
                 upSamples = 0;
+                handled = true;
             }
             double tau = stationary ? 0.5 : 2.0;
             if (!lowPassInit) {
@@ -115,9 +129,24 @@ public final class Aligner {
                 }
             }
             if (!upLocked && stationary && rate < 0.03) {
-                updateUp(lowPass, upInitialised ? 0.02 : 1.0);
-                if (++upSamples >= UP_STATIONARY_SAMPLES) {
-                    upLocked = true;
+                double[] gravity = lowPass;
+                boolean use = true;
+                if (handled && slopeAware) {
+                    double grade = gradeProvider == null ? Double.NaN : gradeProvider.getAsDouble();
+                    if (Double.isNaN(grade)) {
+                        use = false; // no slope source: keep the gyro-tracked alignment
+                    } else {
+                        // At rest on a slope the car body is pitched: gravity has a component g*sin(slope)
+                        // along the car's forward axis. Remove it before taking the direction as "up".
+                        double gs = Rot.norm(lowPass) * grade / Math.sqrt(1 + grade * grade);
+                        gravity = Rot.sub(lowPass, Rot.scale(fwd, gs));
+                    }
+                }
+                if (use) {
+                    updateUp(gravity, upInitialised ? 0.02 : 1.0);
+                    if (++upSamples >= UP_STATIONARY_SAMPLES) {
+                        upLocked = true;
+                    }
                 }
             }
             for (int k = 0; k < 3; k++) {
