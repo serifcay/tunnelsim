@@ -284,7 +284,32 @@ final class MapView extends CanvasPane {
      */
     private void drawCallouts(GraphicsContext g, RoadNetwork net, CarResult car, double roadWidth) {
         var route = state.result.route();
+        // Every exit: grey sign, numbered along the main road; the route's exit is drawn green below.
+        g.setFont(Font.font("System", FontWeight.BOLD, 10));
+        g.setTextBaseline(VPos.CENTER);
+        g.setTextAlign(TextAlignment.CENTER);
+        // Signs sit on the ramps themselves, 150 m in (where a ramp has clearly separated), so they
+        // never collide with announcement points on the main road.
+        int number = 0;
+        for (tunnelsim.map.Edge e : net.edges()) {
+            if (!e.ramp) {
+                continue;
+            }
+            number = 1 + (int) net.forks().stream().filter(f -> f < e.pathStart - 1).count();
+            boolean isRoute = route.hasManeuver() && Math.abs(e.pathStart - route.maneuverOffset()) < 1;
+            Pose fp = e.pose(Math.min(150, e.length));
+            double fx = sx(fp.x()), fy = sy(fp.y());
+            String label = (isRoute ? "EXIT " : "exit ") + number;
+            double half = isRoute ? 30 : 22;
+            g.setFill(isRoute ? Color.web("#1f7a3a") : Color.web("#7d8a80"));
+            g.fillRoundRect(fx - half, fy - 9, 2 * half, 18, 4, 4);
+            g.setFill(Color.WHITE);
+            g.setFont(Font.font("System", FontWeight.BOLD, isRoute ? 11 : 10));
+            g.fillText(label, fx, fy);
+        }
         if (!route.hasManeuver()) {
+            g.setTextBaseline(VPos.BASELINE);
+            g.setTextAlign(TextAlignment.LEFT);
             return;
         }
         double maneuver = route.maneuverOffset();
@@ -304,16 +329,6 @@ final class MapView extends CanvasPane {
             g.setTextAlign(TextAlignment.RIGHT);
             g.fillText(String.format(Locale.ROOT, "%.0f m", d), x - 11, y);
         }
-        // The exit itself.
-        MapPosition exit = net.positionOnPath(route.leaf(), maneuver);
-        Pose ep = net.pose(exit);
-        double side = -(roadWidth / 2 + 22);
-        double ex = sx(ep.x()) + side * Math.sin(ep.heading()), ey = sy(ep.y()) + side * Math.cos(ep.heading());
-        g.setFill(Color.web("#1f7a3a"));
-        g.fillRoundRect(ex - 20, ey - 9, 40, 18, 4, 4);
-        g.setFill(Color.WHITE);
-        g.setTextAlign(TextAlignment.CENTER);
-        g.fillText("EXIT", ex, ey);
 
         // Where each estimator announced, on the right of the road (one lane per estimator).
         int lane = 0;

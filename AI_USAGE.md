@@ -130,6 +130,25 @@ This file records how AI tools were used on this case study: what they suggested
 - S12 uphill ~19 m; S13 downhill ~14 m.
 - The suspension fix also improved S11 (17 → 16 m) and S10 (13 → 10 m), with NEES around 1.
 
+### 2026-10-19: Multi-exit scenarios
+
+**My input**
+- Asked for an uphill and a downhill curved tunnel with several exits.
+
+**AI contribution**
+- Checked that the code handles several forks before writing the scenarios, and found a real gap.
+  The announcement logic counted any off-route hypothesis as "past the exit", so hypotheses on a
+  wrong *earlier* exit would trigger the announcements for the planned exit early. Fixed it. A
+  driver who takes an earlier exit now ends the planned exit's announcements instead of scoring
+  them as missed.
+- Added S14/S15: three exits; the route takes the middle one, in the curve; a second car takes
+  exit 1 by mistake. Added numbered exit signs on the map (on the ramps, so they don't collide with
+  announcement points) and a regression test.
+
+**Result**
+- D tells the exits apart: the wrong exit is recognised after 1.0 s (A and C: 13.5 s).
+- Announcement timing for exit 2: 0.3 s.
+
 **Still open** (reported in the write-up, not hidden)
 - OBD fusion (D+E) is still over-confident in stop-and-go traffic.
 - The stop detector relies on road vibration; with none at all it fails badly.

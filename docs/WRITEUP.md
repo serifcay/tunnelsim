@@ -21,6 +21,7 @@ median / 95th percentile over runs):
 | S11: stops on 3% / 2% slopes | 2,172 m | 36 / 72 m | **16 / 25 m** | |
 | S7: phone shifts 27° in its holder | 45 / 93 m | 29 / 89 m | **13 / 30 m** | |
 | S6: driver misses the exit | branch known after 44 s | 44 s | **0.5 s** (95%: 3.3 s) | |
+| S14/S15: three exits, curved ±3.5% tunnel | ~100 m, wrong exit known after 13.5 s | ~90 m, 13.5 s | **~8 m, 1.0 s**, callout 0.3 s | |
 | Curvy, hilly tunnel, 500 m–5 km | max 12 → 132 m | max 4 → 89 m | **max 4–8 m at any length** | |
 
 D is also **honest about its uncertainty**: on every scenario its error stays inside its own 2σ
@@ -258,6 +259,18 @@ Lateral acceleration is within noise and is biased by body roll, so it is off by
 - S6 (driver misses the exit): D decides the branch **0.5 s** after the fork (95%: 3.3 s), from the
   ramp's curve the gyro *doesn't* see. A, B and C follow the planned ramp until GNSS returns at the
   tunnel exit, 44 s later, and show the car on the wrong road for 1.8 km.
+- **Several exits in one tunnel** (S14 climbing, S15 descending at 3.5%, three exits in a curve;
+  the route takes exit 2; a second car takes exit 1 by mistake):
+  - D keeps both cars at ~8 m median rms.
+  - It recognises the wrong exit 1.0 s after the fork (95%: 1.9 s). A and C need 13.5 s, until GNSS
+    returns at the end of the ramp's tunnel section.
+  - The announcements for exit 2 begin right at exit 1. D times them to 0.3 s, with no late
+    announcements.
+  - This needed one fix: hypotheses on a wrong *earlier* exit used to count as "past the planned
+    exit", which would have fired its announcements early.
+
+  ![S14](figures/error_s14-multi-exit-uphill.png)
+
 - With three cars (S10), D handles the fast car, the cautious one that stops, and the one that
   misses the exit: median rms 10 m against 27 m for C. C's 95% case is 565 m, from the missed exit.
 - Recovery: after GNSS returns, all estimators are within 10 m in a few seconds. The display

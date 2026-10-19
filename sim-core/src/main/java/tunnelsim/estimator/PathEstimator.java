@@ -76,7 +76,8 @@ abstract class PathEstimator implements Estimator {
             return 0;
         }
         if (!ctx.route().contains(leaf)) {
-            return 1;
+            // Off the route: the maneuver was passed only if the estimate left the route at its fork.
+            return net.forkBetween(leaf, ctx.route().leaf()) >= targetOffset - 1 ? 1 : 0;
         }
         double remaining = targetOffset - offset;
         return MathUtil.normalCdf((d - remaining) / Math.max(sigma, 0.1));

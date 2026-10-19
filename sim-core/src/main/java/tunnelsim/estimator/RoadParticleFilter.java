@@ -690,9 +690,14 @@ public final class RoadParticleFilter implements Estimator {
         }
         double[] w = weights();
         double p = 0;
+        int routeLeaf = ctx.route().leaf();
         for (int i = 0; i < n; i++) {
             if (!ctx.route().contains(edge[i])) {
-                p += w[i];
+                // Off the route: past the maneuver only if it left the route at (or after) the
+                // maneuver's fork. A particle on an earlier, wrong exit never reaches it.
+                if (net.forkBetween(edge[i], routeLeaf) >= targetOffset - 1) {
+                    p += w[i];
+                }
             } else if (targetOffset - (edges[edge[i]].pathStart + s[i]) <= d) {
                 p += w[i];
             }

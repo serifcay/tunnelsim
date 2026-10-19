@@ -42,6 +42,11 @@ public final class Route {
         return network.isAncestorOrSelf(edge, leaf);
     }
 
+    /** True if a position on {@code edge} has left the route at a fork before the maneuver. */
+    public boolean leftBeforeManeuver(int edge) {
+        return hasManeuver() && !contains(edge) && network.forkBetween(edge, leaf) < maneuverOffset - 1;
+    }
+
     /** The child the route continues on when reaching the end of {@code edge}. */
     public int next(int edge) {
         for (int child : network.edge(edge).children()) {

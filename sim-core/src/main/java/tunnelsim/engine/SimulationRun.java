@@ -156,7 +156,7 @@ public final class SimulationRun {
                     display.offset(), dispErr, dispWrong));
 
             if (e.valid()) {
-                for (CalloutTracker.Callout c : callouts.get(k).update(t, est, truth.offset(i), truth.v(i))) {
+                for (CalloutTracker.Callout c : callouts.get(k).update(t, est, truth.edge(i), truth.offset(i), truth.v(i))) {
                     track.callouts.add(c);
                     String text = c.fired()
                             ? String.format("callout %.0f m (true %.0f m, %+.1f s)%s", c.distance(), c.trueRemaining(),

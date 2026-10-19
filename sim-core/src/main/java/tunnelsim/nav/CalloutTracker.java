@@ -43,9 +43,13 @@ public final class CalloutTracker {
     }
 
     /** @return callouts fired during this tick */
-    public List<Callout> update(double t, Estimator est, double truthOffset, double truthSpeed) {
+    public List<Callout> update(double t, Estimator est, int truthEdge, double truthOffset, double truthSpeed) {
         List<Callout> fired = new ArrayList<>();
         if (!route.hasManeuver()) {
+            return fired;
+        }
+        if (route.leftBeforeManeuver(truthEdge)) {
+            pending.clear(); // the driver took an earlier exit: these callouts no longer apply
             return fired;
         }
         double maneuver = route.maneuverOffset();

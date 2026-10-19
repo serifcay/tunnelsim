@@ -73,6 +73,18 @@ class EstimationTest {
     }
 
     @Test
+    void severalExitsInATunnelAreToldApart() {
+        // Three exits; the route takes the middle one; car 2 takes exit 1 by mistake.
+        ScenarioConfig s14 = TruthAndSensorsTest.scenario("s14-multi-exit-uphill.yaml");
+        s14.estimators = List.of("C", "D");
+        MonteCarlo.Result r = MonteCarlo.run(s14, 6);
+        assertThat(r.summaries().get("D").branch()[1]).isLessThan(5);
+        assertThat(r.summaries().get("D").callout()[0]).isLessThan(1.5);
+        assertThat(r.summaries().get("D").lateFraction()).isEqualTo(0.0);
+        assertThat(r.summaries().get("C").branch()[0]).isGreaterThan(8);
+    }
+
+    @Test
     void particleFilterIsRoughlyConsistent() {
         ScenarioConfig s3 = TruthAndSensorsTest.scenario("s03-underwater.yaml");
         s3.estimators = List.of("D");

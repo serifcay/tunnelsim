@@ -56,6 +56,7 @@ JavaFX on first use. Run commands from the repository root.
     *should* be given (1000 / 400 / 100 m before the green EXIT sign). Coloured speakers on the right
     mark where each estimator actually gave them; a red ring means late. When an announcement
     fires, a banner shows it as the driver hears it, with the true distance and the timing error.
+    Every exit has a sign on its ramp: grey "exit n", green "EXIT n" for the route's exit.
 - **Strip view** (middle): the road straightened out around the car, one row per estimator with its
   signed along-road error and ±2σ. In a single-lane tunnel this error is what matters, and at
   tunnel scale it is invisible on the map. Red dashes mark the fork and the callout distances.
@@ -75,6 +76,11 @@ JavaFX on first use. Run commands from the repository root.
 *S2, 1.5 s after the 400 m announcement. The planned point is on the left of the road. On the
 right, the constant-velocity estimator A announced 115 m early, the EKF C 33 m early and the
 particle filter D 13 m early. The banner shows what the driver hears.*
+
+![Three exits](docs/figures/simulator_multi_exit.png)
+
+*S14 overview: three exits inside a curved, climbing tunnel. The route takes exit 2 (green); the
+announcement points for it start right at exit 1, which the filter must reject first.*
 
 Snapshot mode, for figures:
 `./gradlew :sim-app:run --args="--snapshot=out.png --scenario=scenarios/s02-curved-exit.yaml --time=180"`
@@ -105,6 +111,7 @@ Snapshot mode, for figures:
 | `s10-three-cars` | Three cars on the S2 road: fast, cautious with a stop, missed exit |
 | `s11-stops-on-slopes` | Stop-and-go on a 3% climb and a 45 s stop on a 2% descent (alignment must not absorb the slope) |
 | `s12-mount-shift-uphill`, `s13-mount-shift-downhill` | The S7 phone shift in a 3.5 km tunnel climbing / descending at 4% |
+| `s14-multi-exit-uphill`, `s15-multi-exit-downhill` | 4 km curved tunnel climbing / descending at 3.5% with **three exits**; the route takes exit 2 (in the curve); a second car takes exit 1 by mistake |
 | `e1-ble`, `e2-obd`, `e3-ble-failures` | Option E: BLE every 100 m; OBD speed in the jam; BLE with 30% of beacons dead |
 
 ## Repository layout

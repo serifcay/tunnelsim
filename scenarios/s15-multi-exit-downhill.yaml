@@ -1,0 +1,52 @@
+# S15: a 4 km curved tunnel descending at 3.5% with three exits inside it. The route takes the
+# middle exit, which lies in the curve. Car 1 follows the route: the filter must reject exit 1,
+# time the callouts for exit 2 and pick it. Car 2 takes exit 1 by mistake.
+name: S15 multi-exit downhill
+description: 4 km right-hand curved tunnel descending 3.5% with exits 1, 2 and 3 km in; the route takes exit 2. Car 2 takes exit 1 by mistake.
+seed: 15
+duration: 360
+road:
+  main:
+    - { type: straight, length: 1200 }
+    - { type: clothoid, length: 150, curvatureEnd: -0.0015, grade: -0.035 }
+    - { type: arc, length: 1500, curvature: -0.0015, grade: -0.035 }
+    - { type: clothoid, length: 150, curvatureEnd: 0.0, grade: -0.035 }
+    - { type: straight, length: 1500, grade: -0.035 }
+    - { type: straight, length: 800 }
+  tunnels:
+    - { from: 1200, to: 5200 }
+  branches:
+    # Exit 1: leaves to the right, sharper than the main curve.
+    - at: 2200
+      speedLimit: 16.7
+      tunnelUntil: 200
+      ramp:
+        - { type: clothoid, length: 60, curvatureEnd: -0.008, grade: -0.05 }
+        - { type: arc, length: 200, curvature: -0.008, grade: -0.05 }
+        - { type: clothoid, length: 60, curvatureEnd: 0.0, grade: -0.02 }
+        - { type: straight, length: 500 }
+    # Exit 2 (the route): leaves to the left, against the main curve.
+    - at: 3200
+      speedLimit: 16.7
+      tunnelUntil: 200
+      ramp:
+        - { type: clothoid, length: 60, curvatureEnd: 0.008, grade: -0.05 }
+        - { type: arc, length: 200, curvature: 0.008, grade: -0.05 }
+        - { type: clothoid, length: 60, curvatureEnd: 0.0, grade: -0.02 }
+        - { type: straight, length: 500 }
+    # Exit 3: on the straight, to the right.
+    - at: 4200
+      speedLimit: 16.7
+      tunnelUntil: 200
+      ramp:
+        - { type: clothoid, length: 60, curvatureEnd: -0.008, grade: -0.05 }
+        - { type: arc, length: 200, curvature: -0.008, grade: -0.05 }
+        - { type: clothoid, length: 60, curvatureEnd: 0.0, grade: -0.02 }
+        - { type: straight, length: 500 }
+route:
+  takeBranchAt: [3200]
+cars:
+  - id: follows-route
+  - id: wrong-exit
+    startTime: 20
+    driver: { pFollowRoute: 0.0 }
