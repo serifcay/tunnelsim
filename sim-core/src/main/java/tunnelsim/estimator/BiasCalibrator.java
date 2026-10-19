@@ -47,7 +47,7 @@ final class BiasCalibrator {
         double dt = Double.isNaN(lastT) ? 0 : imu.t() - lastT;
         lastT = imu.t();
         if (imu.mountDisturbed()) {
-            pbb += 0.1 * 0.1;
+            pbb += 0.05 * 0.05;
         }
         if (!ready || dt <= 0 || imu.t() - lastFixT > FRESH) {
             return;

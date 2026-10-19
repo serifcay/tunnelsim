@@ -175,7 +175,8 @@ public final class TruthTrajectory {
     public double[] mountAt(double time) {
         double[] r = mountChanges.get(0).bodyToPhone();
         for (MountChange c : mountChanges) {
-            if (c.t() <= time) {
+            // Tolerance: change times and sample times are both multiples of dt, computed differently.
+            if (c.t() <= time + 1e-9) {
                 r = c.bodyToPhone();
             }
         }

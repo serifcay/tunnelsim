@@ -113,15 +113,19 @@ public final class ImuModel {
     /**
      * Angular rate of the phone relative to the car, in the phone frame, while the phone moves in
      * its mount. With v_phone = M v_body, a phone rotating at w sees dM/dt = -[w]x M.
+     * The mount is stored as steps at sample times; differencing over (t - dt/2, t + dt/2] counts
+     * each step exactly once, so the integrated rate equals the total rotation. (A central difference
+     * over t +- dt, combined with floating-point step times, counted some steps twice and others
+     * not at all: the simulated gyro under-reported up to ~20% of a phone shift.)
      */
     private static double[] mountRate(TruthTrajectory tr, double t, double dt) {
         if (tr.mountChanges().size() < 2) {
             return new double[3];
         }
-        double[] m0 = tr.mountAt(t - dt), m1 = tr.mountAt(t + dt), m = tr.mountAt(t);
+        double[] m0 = tr.mountAt(t - 0.5 * dt), m1 = tr.mountAt(t + 0.5 * dt), m = tr.mountAt(t);
         double[] dm = new double[9];
         for (int k = 0; k < 9; k++) {
-            dm[k] = -(m1[k] - m0[k]) / (2 * dt);
+            dm[k] = -(m1[k] - m0[k]) / dt;
         }
         double[] w = Rot.mul(dm, Rot.transpose(m));
         return new double[]{(w[7] - w[5]) / 2, (w[2] - w[6]) / 2, (w[3] - w[1]) / 2};

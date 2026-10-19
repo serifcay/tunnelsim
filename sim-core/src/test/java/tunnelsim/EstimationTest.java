@@ -62,6 +62,17 @@ class EstimationTest {
     }
 
     @Test
+    void phoneShiftInTheHolderIsTrackedByTheGyro() {
+        // A 27 deg phone rotation mid-tunnel. When the simulated gyro under-reported the rotation,
+        // the leftover tilt leaked gravity into the forward axis and D drifted back by ~100 m.
+        ScenarioConfig s7 = TruthAndSensorsTest.scenario("s07-mount-shift.yaml");
+        s7.estimators = List.of("D");
+        MonteCarlo.Summary d = MonteCarlo.run(s7, 8).summaries().get("D");
+        assertThat(d.rms()[0]).isLessThan(30);
+        assertThat(d.within2Sigma()).isGreaterThan(0.85);
+    }
+
+    @Test
     void particleFilterIsRoughlyConsistent() {
         ScenarioConfig s3 = TruthAndSensorsTest.scenario("s03-underwater.yaml");
         s3.estimators = List.of("D");

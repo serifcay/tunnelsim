@@ -100,9 +100,38 @@ This file records how AI tools were used on this case study: what they suggested
 - The incident stop (S5) went from 37 to 11 m.
 - Stops on slopes (S11) went from 574 to 17 m.
 
+### 2026-10-19: My question about the sign of S7's errors, and new requests
+
+**My input**
+- I noticed that in S7 (phone shift) both C and D always ended up behind the car, and asked why.
+- I asked for scenarios with the phone shift in an uphill and a downhill tunnel.
+- I asked for the exit announcements to be shown on the simulator map.
+
+**AI contribution**
+- Explained the mechanism: a leftover tilt after the shift leaks gravity into the forward axis.
+- Showed that the tracking error persisted with a perfect gyro, which pointed to the simulator
+  rather than the estimator. The simulator's gyro model counted some mount-rotation steps twice and
+  others not at all (floating-point step times). It confirmed this with a temporary fix: D's error
+  after the shift went from −88/−361 m to ±2 m.
+- Separated a second, independent effect: C drifts behind on that road even without a shift. A
+  small forward misalignment leaks the curve's lateral acceleration, and C applies the map slope at
+  a slightly wrong position, with no curvature or barometer matching to correct either.
+- Fixed the simulator, reduced the bias widening after handling, added a regression test, added
+  S12/S13, and drew the planned and actual announcement points plus an announcement banner on the
+  map.
+
+- When the study re-run showed S11 and S10 getting *worse* (scenarios without a phone shift), it
+  bisected the change against the last commit and found a second simulator artefact. The driver
+  model ended braking in one step, so the body pitch snapped back at ~1.4 rad/s. The aligner took
+  that for phone handling at every stop. Fixed by giving body pitch and roll a 0.3 s suspension lag.
+
+**Result (D, median in-tunnel rms)**
+- S7: 44.5 → 13 m, consistency NEES 73 → 0.8.
+- S12 uphill ~19 m; S13 downhill ~14 m.
+- The suspension fix also improved S11 (17 → 16 m) and S10 (13 → 10 m), with NEES around 1.
+
 **Still open** (reported in the write-up, not hidden)
 - OBD fusion (D+E) is still over-confident in stop-and-go traffic.
-- A phone shift mid-tunnel (S7) is only partly handled.
 - The stop detector relies on road vibration; with none at all it fails badly.
 
 **My review and overrides**

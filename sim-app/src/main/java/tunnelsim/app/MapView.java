@@ -5,6 +5,7 @@ import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.StrokeLineCap;
 import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.scene.text.TextAlignment;
 import tunnelsim.engine.CarResult;
 import tunnelsim.engine.Track;
@@ -14,6 +15,8 @@ import tunnelsim.map.Features.Beacon;
 import tunnelsim.map.Features.CellZone;
 import tunnelsim.map.Features.Portal;
 import tunnelsim.map.MapPosition;
+import tunnelsim.map.Pose;
+import tunnelsim.nav.CalloutTracker;
 import tunnelsim.map.RoadNetwork;
 import tunnelsim.sensor.SensorEvent.GnssFix;
 import tunnelsim.vehicle.TruthTrajectory;
@@ -23,6 +26,7 @@ import java.util.Locale;
 
 /** Top view of the road network with the true car, estimates, uncertainty and particles. */
 final class MapView extends CanvasPane {
+    private static final Color CALLOUT = Color.web("#b5532a");
     private final AppState state;
     private double cx, cy, scale = 1;
     private boolean follow = true;
@@ -266,9 +270,140 @@ final class MapView extends CanvasPane {
             }
         }
 
+        drawCallouts(g, net, car, roadWidth);
+
         // The true car on top.
         drawCar(g, truth.x(ti), truth.y(ti), truth.heading(ti), Palette.TRUTH, 1.0);
         drawOverlay(g, car, ti);
+        drawCalloutBanner(g, car);
+    }
+
+    /**
+     * Exit announcements: where they should be given (planned points on the route, before the
+     * exit sign), and where each estimator actually gave them (at the true car position when it fired).
+     */
+    private void drawCallouts(GraphicsContext g, RoadNetwork net, CarResult car, double roadWidth) {
+        var route = state.result.route();
+        if (!route.hasManeuver()) {
+            return;
+        }
+        double maneuver = route.maneuverOffset();
+        g.setFont(Font.font("System", FontWeight.BOLD, 11));
+        g.setTextBaseline(VPos.CENTER);
+        // Planned announcement points, on the left of the road.
+        for (double d : state.result.scenario().nav.calloutDistances) {
+            MapPosition p = net.positionOnPath(route.leaf(), maneuver - d);
+            Pose pose = net.pose(p);
+            double side = -(roadWidth / 2 + 16);
+            double x = sx(pose.x()) + side * Math.sin(pose.heading()), y = sy(pose.y()) + side * Math.cos(pose.heading());
+            g.setStroke(CALLOUT);
+            g.setLineWidth(1);
+            g.strokeLine(sx(pose.x()), sy(pose.y()), x, y);
+            drawSpeaker(g, x, y, CALLOUT, 1.0);
+            g.setFill(CALLOUT);
+            g.setTextAlign(TextAlignment.RIGHT);
+            g.fillText(String.format(Locale.ROOT, "%.0f m", d), x - 11, y);
+        }
+        // The exit itself.
+        MapPosition exit = net.positionOnPath(route.leaf(), maneuver);
+        Pose ep = net.pose(exit);
+        double side = -(roadWidth / 2 + 22);
+        double ex = sx(ep.x()) + side * Math.sin(ep.heading()), ey = sy(ep.y()) + side * Math.cos(ep.heading());
+        g.setFill(Color.web("#1f7a3a"));
+        g.fillRoundRect(ex - 20, ey - 9, 40, 18, 4, 4);
+        g.setFill(Color.WHITE);
+        g.setTextAlign(TextAlignment.CENTER);
+        g.fillText("EXIT", ex, ey);
+
+        // Where each estimator announced, on the right of the road (one lane per estimator).
+        int lane = 0;
+        TruthTrajectory truth = car.truth;
+        for (String id : state.visible) {
+            Track track = car.tracks.get(id);
+            if (track == null) {
+                continue;
+            }
+            lane++;
+            Color c = Palette.estimator(id);
+            for (CalloutTracker.Callout co : track.callouts) {
+                if (!co.fired() || co.t() > state.time) {
+                    continue;
+                }
+                int i = truth.indexAt(co.t());
+                double hd = truth.heading(i);
+                double off = roadWidth / 2 + 6 + 14 * lane;
+                double x = sx(truth.x(i)) + off * Math.sin(hd), y = sy(truth.y(i)) + off * Math.cos(hd);
+                drawSpeaker(g, x, y, c, 0.8);
+                if (co.late()) {
+                    g.setStroke(Color.web("#c0392b"));
+                    g.setLineWidth(2);
+                    g.strokeOval(x - 9, y - 9, 18, 18);
+                }
+                g.setFill(c);
+                g.setTextAlign(TextAlignment.LEFT);
+                g.setFont(Font.font("System", 10));
+                g.fillText(String.format(Locale.ROOT, "%s %.0f", id, co.distance()), x + 9, y);
+                g.setFont(Font.font("System", FontWeight.BOLD, 11));
+            }
+        }
+        g.setTextAlign(TextAlignment.LEFT);
+        g.setTextBaseline(VPos.BASELINE);
+    }
+
+    /** A banner for announcements fired in the last few seconds, as the driver would hear them. */
+    private void drawCalloutBanner(GraphicsContext g, CarResult car) {
+        List<String> lines = new java.util.ArrayList<>();
+        List<Color> colors = new java.util.ArrayList<>();
+        for (String id : state.visible) {
+            Track track = car.tracks.get(id);
+            if (track == null) {
+                continue;
+            }
+            for (CalloutTracker.Callout co : track.callouts) {
+                double age = state.time - co.t();
+                if (co.fired() && age >= 0 && age < 4) {
+                    String when = co.distance() <= 150 ? "take the exit now" : String.format(Locale.ROOT, "in %.0f m, take the exit", co.distance());
+                    lines.add(String.format(Locale.ROOT, "%s:  \u201c%s\u201d   (true distance %.0f m, %+.1f s%s)", id,
+                            when.substring(0, 1).toUpperCase() + when.substring(1), co.trueRemaining(), co.timingError(),
+                            co.late() ? ", LATE" : ""));
+                    colors.add(Palette.estimator(id));
+                }
+            }
+        }
+        if (lines.isEmpty()) {
+            return;
+        }
+        g.setFont(Font.font("System", FontWeight.BOLD, 13));
+        double width = lines.stream().mapToDouble(String::length).max().orElse(0) * 7.4 + 50;
+        double x0 = Math.max(8, (w() - width) / 2), y0 = 44;
+        double hgt = 22 * lines.size() + 10;
+        g.setFill(Palette.withAlpha(Color.WHITE, 0.92));
+        g.fillRoundRect(x0, y0, width, hgt, 10, 10);
+        g.setStroke(CALLOUT);
+        g.setLineWidth(1.5);
+        g.strokeRoundRect(x0, y0, width, hgt, 10, 10);
+        g.setTextBaseline(VPos.CENTER);
+        g.setTextAlign(TextAlignment.LEFT);
+        for (int k = 0; k < lines.size(); k++) {
+            double y = y0 + 16 + 22 * k;
+            drawSpeaker(g, x0 + 18, y, colors.get(k), 0.9);
+            g.setFill(colors.get(k));
+            g.fillText(lines.get(k), x0 + 34, y);
+        }
+        g.setTextBaseline(VPos.BASELINE);
+    }
+
+    private static void drawSpeaker(GraphicsContext g, double x, double y, Color c, double size) {
+        double s = 6 * size;
+        g.setFill(Palette.withAlpha(Color.WHITE, 0.9));
+        g.fillOval(x - 1.6 * s, y - 1.6 * s, 3.2 * s, 3.2 * s);
+        g.setFill(c);
+        g.fillRect(x - s, y - 0.45 * s, 0.6 * s, 0.9 * s);
+        g.fillPolygon(new double[]{x - 0.4 * s, x + 0.4 * s, x + 0.4 * s, x - 0.4 * s},
+                new double[]{y - 0.45 * s, y - s, y + s, y + 0.45 * s}, 4);
+        g.setStroke(c);
+        g.setLineWidth(1.2);
+        g.strokeArc(x - 0.2 * s, y - 0.7 * s, 1.2 * s, 1.4 * s, -50, 100, javafx.scene.shape.ArcType.OPEN);
     }
 
     private void strokeEdge(GraphicsContext g, Edge e, double from, double to, Color c, double width) {

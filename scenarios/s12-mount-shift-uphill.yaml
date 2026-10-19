@@ -1,0 +1,21 @@
+# S12: the phone rotates in its holder halfway through a long uphill tunnel.
+# On a slope the car body is pitched by the grade, so a mis-tracked phone rotation leaks the
+# slope's gravity component differently than on level road.
+name: S12 mount shift uphill
+description: 3.5 km tunnel climbing at 4% (gentle curve first); the phone rotates 27 deg in its holder 1.8 km in.
+seed: 12
+duration: 340
+road:
+  main:
+    - { type: straight, length: 1200 }
+    - { type: clothoid, length: 100, curvatureEnd: 0.001, grade: 0.04 }
+    - { type: arc, length: 600, curvature: 0.001, grade: 0.04 }
+    - { type: clothoid, length: 100, curvatureEnd: 0.0, grade: 0.04 }
+    - { type: straight, length: 2700, grade: 0.04 }
+    - { type: straight, length: 1000 }
+  tunnels:
+    - { from: 1200, to: 4700 }
+cars:
+  - id: car1
+    events:
+      - { at: 3000, type: mountShift, yawDeg: 25, pitchDeg: 10 }

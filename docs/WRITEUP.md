@@ -15,22 +15,20 @@ median / 95th percentile over runs):
 
 | Scenario | A: constant velocity | C: map-aided EKF | **D: particle filter** | D+E |
 |---|---|---|---|---|
-| Scenario | A: constant velocity | C: map-aided EKF | **D: particle filter** | D+E |
-|---|---|---|---|---|
-| S2: curved 3 km, exit 2.1 km in | 41 / 97 m, callout 5.1 s off | 17 / 43 m, 1.7 s | **9.0 / 20 m, 0.4 s** | BLE: 3.3 / 5.9 m, 0.2 s |
+| S2: curved 3 km, exit 2.1 km in | 41 / 97 m, callout 5.1 s off | 17 / 43 m, 1.7 s | **9.4 / 21 m, 0.4 s** | BLE: 3.1 / 5.8 m, 0.2 s |
 | S3: underwater 5 km, ±4% | 87 / 191 m | 60 / 118 m | **18 / 29 m** | |
-| S4: 5 km, 1.5 km stop-and-go | 2,258 m | 22 / 49 m | 27 / 62 m | OBD: 15 / 31 m |
-| S11: stops on 3% / 2% slopes | 2,172 m | 40 / 77 m | **17 / 30 m** | |
-| S6: driver misses the exit | branch known after 44 s | 44 s | **0.5 s** (95%: 3.2 s) | |
+| S4: 5 km, 1.5 km stop-and-go | 2,258 m | 23 / 49 m | 30 / 70 m | OBD: 13 / 26 m |
+| S11: stops on 3% / 2% slopes | 2,172 m | 36 / 72 m | **16 / 25 m** | |
+| S7: phone shifts 27° in its holder | 45 / 93 m | 29 / 89 m | **13 / 30 m** | |
+| S6: driver misses the exit | branch known after 44 s | 44 s | **0.5 s** (95%: 3.3 s) | |
 | Curvy, hilly tunnel, 500 m–5 km | max 12 → 132 m | max 4 → 89 m | **max 4–8 m at any length** | |
 
-D is also **honest about its uncertainty**: its error stays inside its own 2σ 90–100% of the time
-(95% is ideal) on every scenario except the phone-shift case.
+D is also **honest about its uncertainty**: on every scenario its error stays inside its own 2σ
+90–100% of the time (95% is ideal).
 
 The approach breaks down where the road carries no information: on a straight, flat tunnel the
 filter falls back to dead reckoning and is no better than an EKF. It also needs road vibration to
-detect stops, and a phone moved in its holder mid-tunnel is only partly handled. Section 7 covers
-this.
+detect stops. Section 7 covers this.
 
 ## 2. The problem, reframed
 
@@ -184,22 +182,23 @@ S2 (curved 3 km tunnel, exit 2.1 km in):
   fork, peaks right at the fork, and drops sharply when the ramp's curve re-anchors it.
 - Callouts: D's median timing error is 0.4 s (95%: 1.7 s), against 5.1 s for A and 1.7 s for C. A,
   C and D had no late callouts in any run; B was late in most callouts.
+- The simulator map shows where each estimator announced, next to where it should have.
 
 ![S3](figures/error_s03-underwater.png)
 
 S3 (5 km underwater tunnel, 100 m deep): B is useless because it doesn't correct for grade. The
-barometer's elevation profile keeps D at 18 m rms, against 42 m for the same filter without the
+barometer's elevation profile keeps D at 18 m rms, against 41 m for the same filter without the
 barometer (§6.3).
 
 ![S4](figures/error_s04-jam.png)
 
 S4 (stop-and-go traffic):
 - Constant velocity fails completely: the marker runs 3.8 km ahead of the car.
-- C and D are equivalent (22 and 27 m rms). The road has no shape, so the particle filter has
+- C and D are equivalent (23 and 30 m rms). The road has no shape, so the particle filter has
   nothing extra to match.
 - What keeps both in check:
-  - **Stop detection**: every detected stop resets the speed error (without it, D: 84 m).
-  - **The per-car accelerometer scale**: without it, D: 44 m. Every accelerate/brake cycle
+  - **Stop detection**: every detected stop resets the speed error (without it, D: 88 m).
+  - **The per-car accelerometer scale**: without it, D: 42 m. Every accelerate/brake cycle
     integrates the scale error.
   - **A fixed "up" axis**: before this fix, D was at 53 m (§7).
 
@@ -207,7 +206,15 @@ S4 (stop-and-go traffic):
 
 S11 (stop-and-go on a 3% climb, a full stop on a 2% descent) exists because of a flaw found during
 the evaluation. Re-estimating "up" at a stop on a slope counts the slope twice, and errors reached
-2 km. With "up" frozen, D gets 17 m rms and C 40 m. Here the barometer helps D on the slopes.
+2 km. With "up" frozen, D gets 16 m rms and C 36 m. Here the barometer helps D on the slopes.
+
+**Phone shifting in its holder** (S7 on mostly level road, S12 uphill at 4%, S13 downhill at 4%):
+- The gyro tracks the 27° rotation. D's error is essentially unaffected: 13 / 19 / 14 m rms, and its
+  error stays inside its claimed 2σ.
+- C (29 / 49 / 54 m) drifts on these roads even without a shift. It can't correct small
+  misalignments without curvature or barometer matching.
+- An earlier version of this result was much worse (D 45 m, over-confident). That turned out to be
+  simulator bugs, not the method (§7).
 
 ### 6.2 Tunnel length
 
@@ -217,7 +224,7 @@ Generated tunnels from 500 m to 5 km, on a featureless straight, flat road (dash
 hilly road (solid):
 - **On the curvy, hilly road, D's largest error stays at 4–8 m whatever the length.** The road
   shape keeps re-anchoring it.
-- On the featureless road every approach drifts, to roughly 90–130 m at 5 km. In steady free flow,
+- On the featureless road every approach drifts, to roughly 95–130 m at 5 km. In steady free flow,
   constant velocity is about as good as anything: the driver's speed simply doesn't change much.
   (A's two lines coincide: these curves don't change the driver's speed.)
 - Error *at the exit* is not shown: the light sensor detects the portal and snaps C and D back to
@@ -231,12 +238,12 @@ Median in-tunnel rms over 50 runs:
 
 | Removed | S2 curved | S3 underwater | S4 jam | S11 slopes |
 |---|---|---|---|---|
-| nothing | 9.0 m | 17.6 m | 27.3 m | 17.2 m |
-| curvature matching | **14.4 m** | 17.6 m | 27.3 m | 17.2 m |
-| barometer | 9.0 m | **41.6 m** | 27.3 m | **46.1 m** |
-| stop detection | 9.1 m | 17.5 m | **83.7 m** | **26.9 m** |
-| accelerometer scale | 9.5 m | 17.7 m | **43.8 m** | 21.5 m |
-| speed prior / portal / cell | ±1 m | ±0.5 m | ±2 m | ±1.5 m |
+| nothing | 9.4 m | 18.0 m | 30.1 m | 15.9 m |
+| curvature matching | **14.5 m** | 18.0 m | 30.1 m | 15.9 m |
+| barometer | 9.0 m | **41.3 m** | 30.1 m | **43.2 m** |
+| stop detection | 8.9 m | 17.5 m | **87.5 m** | **21.1 m** |
+| accelerometer scale | 9.5 m | 17.8 m | **41.5 m** | 18.7 m |
+| speed prior / portal / cell | ±0.5 m | ±0.5 m | ±4 m | ±1.5 m |
 
 Each scenario is carried by one sensor that matches its road:
 - the gyro in curves
@@ -248,11 +255,11 @@ Lateral acceleration is within noise and is biased by body roll, so it is off by
 
 ### 6.4 Branch choice, reroute and recovery
 
-- S6 (driver misses the exit): D decides the branch **0.5 s** after the fork (95%: 3.2 s), from the
+- S6 (driver misses the exit): D decides the branch **0.5 s** after the fork (95%: 3.3 s), from the
   ramp's curve the gyro *doesn't* see. A, B and C follow the planned ramp until GNSS returns at the
   tunnel exit, 44 s later, and show the car on the wrong road for 1.8 km.
 - With three cars (S10), D handles the fast car, the cautious one that stops, and the one that
-  misses the exit: median rms 13 m against 29 m for C. C's 95% case is 565 m, from the missed exit.
+  misses the exit: median rms 10 m against 27 m for C. C's 95% case is 565 m, from the missed exit.
 - Recovery: after GNSS returns, all estimators are within 10 m in a few seconds. The display
   smoother never moves the marker backwards. Heavy-tailed GNSS likelihoods plus inflated noise for
   the first fixes absorb the 5–25 m multipath at the exit.
@@ -261,32 +268,31 @@ Lateral acceleration is within noise and is biased by body roll, so it is off by
 
 | | S2 rms (median / 95%) | S3 rms |
 |---|---|---|
-| Generic Android | 9.0 / 20 m | 17.6 / 29 m |
-| iOS (no raw GNSS, light or cell) | 8.8 / 19 m | 18.3 / 29 m |
-| Low-end (no barometer, 2× IMU error) | 10.4 / 20 m | **44.7 / 75 m** |
+| Generic Android | 9.4 / 21 m | 18.0 / 29 m |
+| iOS (no raw GNSS, light or cell) | 8.8 / 18 m | 18.3 / 30 m |
+| Low-end (no barometer, 2× IMU error) | 10.4 / 22 m | **44.9 / 71 m** |
 
 - An iPhone loses almost nothing in these scenarios.
 - A phone without a barometer loses the elevation profile, which is what makes long underwater
   tunnels work.
-- BLE beacons every 100 m bring D+E to 3.3 m rms and a 0.2 s callout error. With 30% of the beacons
-  dead it is still 4.2 m.
-- OBD speed in the jam brings D to 15 m.
+- BLE beacons every 100 m bring D+E to 3.1 m rms and a 0.2 s callout error. With 30% of the beacons
+  dead it is still 4.1 m.
+- OBD speed in the jam brings D to 13 m.
 
 ### 6.6 Cost
 
-1,000 particles take about 0.7–1.5 s of CPU for a 4-minute drive on a laptop (~3–6 ms per second
-of driving, depending on load). Accuracy is flat from 300 to 3,000 particles; 100 particles is
-slightly worse and less consistent.
+1,000 particles take about 0.6–0.9 s of CPU for a 4-minute drive on a laptop (~3–4 ms per second of
+driving). Accuracy is flat from 300 to 3,000 particles; 100 particles has a worse 95% tail.
 
 ## 7. Where it breaks, and why
 
 1. **Roads without shape.** On a straight, flat tunnel D has nothing to match. It becomes an
    accelerometer-plus-stops dead reckoner, no better than the EKF. The error grows with time:
-   roughly 40 m after 2 km and 90–130 m after 5 km in free flow (§6.2). The same happens on the
+   roughly 40 m after 2 km and 95–130 m after 5 km in free flow (§6.2). The same happens on the
    1.3 km straight before the S2 fork, which is where D's S2 error peaks. This is the method's
    fundamental limit, not a tuning issue.
-2. **Stop-and-go traffic on a featureless road** (S4, S9): median 22–31 m rms, with 95th-percentile
-   worst cases of ~120–150 m.
+2. **Stop-and-go traffic on a featureless road** (S4, S9): median 23–32 m rms, with 95th-percentile
+   worst cases of ~130–160 m.
    - Every accelerate/brake cycle integrates the residual scale and bias errors. Stop detection
      removes the speed error at each stop, but not the distance already lost.
    - A wrong traffic report (S9) barely matters because the speed prior is deliberately weak.
@@ -298,19 +304,16 @@ slightly worse and less consistent.
    vibration. With road vibration almost switched off in a test, it reported "stopped" while the
    car was moving, and errors went to kilometres. Very smooth roads, well-damped holders or quiet
    EVs need real-data validation.
-4. **The phone moving in its holder** (S7, 27° rotation mid-tunnel). The gyro-tracked alignment ends
-   up about 4° off, and the residual tilt leaks gravity into the forward axis.
-   - After the change, D widens its bias uncertainty and the map re-anchors it on the following
-     grade and ramp curve: median 45 m rms.
-   - The 95% case is 178 m, and D is over-confident (NEES 73).
-   - Detecting phone handling and *saying* "position uncertain" is probably the honest product
-     answer.
+4. **Phone handling is detected by a simple gyro threshold.** Any rotation faster than 20°/s is
+   treated as the phone moving in its holder. In simulation, a clean 27° rotation is tracked well.
+   Real handling is messier, though: the phone is picked up, moved and put back, possibly in a
+   different holder. Potholes also produce short gyro spikes. Telling these apart needs real data.
 5. **The accelerometer scale needs accelerations with GNSS.** Before the tunnel there may be only
    one pull-away to learn from, which makes the estimate noisy (±2.7% across runs, against an
    effect of ~3%). It is therefore shrunk towards zero by its own uncertainty. On real roads more
    acceleration events precede most tunnels.
 6. **Option E consistency.** D+E with OBD is accurate but over-confident in stop-and-go traffic (in
-   2σ only 60% of the time). Speedometer quantisation and latency are correlated errors that the
+   2σ only 70% of the time). Speedometer quantisation and latency are correlated errors that the
    likelihood still treats too optimistically.
 
 **Failure modes found during development, and their fixes.** These are worth knowing for anyone
@@ -320,6 +323,14 @@ building this; `docs/DESIGN.md` §14 has the evidence for each.
 - A barometer treated as independent at 2 Hz makes the filter 7× over-confident.
 - Alignment regression run in curves rotates the forward axis by degrees.
 - Re-estimating "up" at stops counts the slope twice.
+
+**The simulator itself was wrong twice**, and both bugs flattered nobody: they made results worse
+in a consistent direction.
+- The simulated gyro under-reported part of a phone shift (floating-point step times).
+- Body pitch snapped back in one step when the car stopped, which looked like phone handling.
+
+Both were found by asking why an error always had the same sign, or why a scenario got worse after
+an unrelated change. This is the strongest argument for validating on real recordings next.
 
 ## 8. Limitations of this study
 

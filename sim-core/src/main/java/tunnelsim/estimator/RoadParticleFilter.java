@@ -330,10 +330,11 @@ public final class RoadParticleFilter implements Estimator {
         t = imu.t();
         calibrator.onImu(imu);
         if (imu.mountDisturbed() && initialised) {
-            // The phone moved: small residual misalignment changes the gravity leak into the
-            // forward axis, so the calibrated bias no longer holds. Widen it and let the map decide.
+            // The phone moved: the residual tracking error (~1% gyro scale times the rotation)
+            // changes the gravity leak into the forward axis by up to ~0.05 m/s^2, so the calibrated
+            // bias no longer holds exactly. Widen it and let the map decide.
             for (int i = 0; i < n; i++) {
-                ba[i] += rng.gaussian(0.1);
+                ba[i] += rng.gaussian(0.05);
                 ks[i] = 1 + rng.gaussian(pf.gyroScaleSigma);
             }
         }

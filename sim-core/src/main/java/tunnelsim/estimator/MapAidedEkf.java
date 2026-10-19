@@ -110,7 +110,7 @@ public final class MapAidedEkf extends PathEstimator {
             return;
         }
         if (imu.mountDisturbed()) {
-            p[2][2] += 0.1 * 0.1; // phone moved: the calibrated bias no longer holds
+            p[2][2] += 0.05 * 0.05; // phone moved: residual tracking error (~1% gyro scale) changes the gravity leak
         }
         MapPosition pos = position(x[0]);
         double g = net.edge(pos.edge()).grade(pos.s());

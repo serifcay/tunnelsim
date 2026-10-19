@@ -52,6 +52,10 @@ JavaFX on first use. Run commands from the repository root.
   - Dots: particles.
   - Red crosses: recent GNSS fixes.
   - Yellow dots: tunnel portals. Squares: BLE beacons (option E).
+  - **Exit announcements**: orange speakers on the left of the road mark where announcements
+    *should* be given (1000 / 400 / 100 m before the green EXIT sign). Coloured speakers on the right
+    mark where each estimator actually gave them; a red ring means late. When an announcement
+    fires, a banner shows it as the driver hears it, with the true distance and the timing error.
 - **Strip view** (middle): the road straightened out around the car, one row per estimator with its
   signed along-road error and ±2σ. In a single-lane tunnel this error is what matters, and at
   tunnel scale it is invisible on the map. Red dashes mark the fork and the callout distances.
@@ -65,6 +69,12 @@ JavaFX on first use. Run commands from the repository root.
 - **Metrics** (right): rms and max error inside tunnels, error at the exit, callout timing, late
   callouts, branch decision time, and the share of time the error stayed within the claimed 2σ.
 - **Export CSV**: writes truth, sensor logs, estimates and events to `results/export/`.
+
+![Exit announcements](docs/figures/simulator_callouts.png)
+
+*S2, 1.5 s after the 400 m announcement. The planned point is on the left of the road. On the
+right, the constant-velocity estimator A announced 115 m early, the EKF C 33 m early and the
+particle filter D 13 m early. The banner shows what the driver hears.*
 
 Snapshot mode, for figures:
 `./gradlew :sim-app:run --args="--snapshot=out.png --scenario=scenarios/s02-curved-exit.yaml --time=180"`
@@ -94,6 +104,7 @@ Snapshot mode, for figures:
 | `s09-stale-traffic` | S4 jam, but traffic data wrongly reports free flow |
 | `s10-three-cars` | Three cars on the S2 road: fast, cautious with a stop, missed exit |
 | `s11-stops-on-slopes` | Stop-and-go on a 3% climb and a 45 s stop on a 2% descent (alignment must not absorb the slope) |
+| `s12-mount-shift-uphill`, `s13-mount-shift-downhill` | The S7 phone shift in a 3.5 km tunnel climbing / descending at 4% |
 | `e1-ble`, `e2-obd`, `e3-ble-failures` | Option E: BLE every 100 m; OBD speed in the jam; BLE with 30% of beacons dead |
 
 ## Repository layout

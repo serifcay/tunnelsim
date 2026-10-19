@@ -26,6 +26,12 @@ public final class Driver {
 
     private static final double SQUAT_PITCH = 0.0035; // rad per m/s^2 of longitudinal acceleration
     private static final double ROLL_GAIN = 0.008;    // rad per m/s^2 of lateral acceleration
+    /**
+     * Suspension response time [s]. Body pitch and roll follow acceleration through this lag; without
+     * it, the instant the car stops the braking dive would snap back within one 10 ms step (~1.4 rad/s
+     * of pitch rate), which no real car does and which the aligner would mistake for phone handling.
+     */
+    private static final double SUSPENSION_TAU = 0.3;
     private static final double SPEED_GAIN = 0.8;     // 1/s
     private static final double JERK = 2.5;           // m/s^3
     private static final double HARD_JERK = 15;       // m/s^3
@@ -80,6 +86,7 @@ public final class Driver {
 
         GaussMarkov jitter = new GaussMarkov(dc.speedJitter, 20, rng);
         double off = 0, v = car.startSpeed, a = 0;
+        double squat = 0, lean = 0;
         int steps = (int) Math.round(duration / DT);
         for (int k = 0; k <= steps; k++) {
             double t = k * DT;
@@ -87,8 +94,10 @@ public final class Driver {
             Edge edge = net.edge(pos.edge());
             Pose pose = edge.pose(pos.s());
             double latAcc = v * v * pose.curvature();
-            double pitch = Math.atan(pose.grade()) + SQUAT_PITCH * a;
-            double roll = ROLL_GAIN * latAcc;
+            squat += (SQUAT_PITCH * a - squat) * DT / SUSPENSION_TAU;
+            lean += (ROLL_GAIN * latAcc - lean) * DT / SUSPENSION_TAU;
+            double pitch = Math.atan(pose.grade()) + squat;
+            double roll = lean;
             traj.add(t, pos.edge(), pos.s(), off, pose.x(), pose.y(), pose.z(), pose.heading(), pitch, roll,
                     v, a, pose.curvature(), pose.grade(), net.tunnelAt(pos));
 
