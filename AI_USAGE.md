@@ -186,5 +186,68 @@ This file records how AI tools were used on this case study: what they suggested
 - OBD fusion (D+E) is still over-confident in stop-and-go traffic.
 - The stop detector relies on road vibration; with none at all it fails badly.
 
-**My review and overrides**
-- *To be filled in by me after reviewing the code and results.*
+## My review and overrides
+
+These are my decisions and the places where I did not accept the AI's output as it was. All of
+them are visible in the log above. The pattern: the AI's first answers were plausible and
+well-presented, but three times its "honest limitation" was in fact a flaw that my questions
+exposed.
+
+### How I steered the work
+
+- **Discussion before code.** I asked for a review of the brief and a design discussion before any
+  implementation, and approved the design document before coding started.
+- **Language.** I chose Java (with JavaFX) because I need to explain and change every line live.
+  The AI noted that Python is more common for positioning R&D.
+- **Scope.** I chose the particle filter on the road network (D) as the main approach.
+  Infrastructure and vehicle data (BLE beacons, OBD speed) are an optional extra (E). The default
+  is "phone only".
+- **Sensors.** I asked for a full survey of phone sensors before deciding what to simulate.
+- **Evidence before choosing.** When the AI proposed further improvements, I asked for the
+  expected gain per scenario before deciding. I chose barometric vertical speed and slope-aware
+  re-alignment, and accepted its advice to skip gyro-feedback calibration (measured best case:
+  about 2 m).
+- **Publishing.** Private repository first, public only after my review.
+
+### Where my questions overturned the AI's conclusions
+
+1. **Speed in stop-and-go traffic.** The AI had written the jam scenario up as a limitation. I
+   asked why the estimated speed drifted so far from the real speed and whether that could be
+   improved. Its measurements then showed the phone's "up" axis being re-estimated at every stop.
+   A new scenario confirmed the worst case: a stop on a slope counted the slope twice, giving
+   2 km errors. Fixing it (plus a per-car accelerometer scale) halved the jam error and removed
+   the slope failure.
+2. **The sign of the phone-shift errors.** The AI had described a phone moving in its holder as
+   "only partly handled". I asked why C and D always ended up *behind* the car. That exposed two
+   bugs in the simulator, not in the estimator:
+   - the simulated gyro missed part of the rotation (floating-point timing);
+   - the car's braking dive snapped back instantly when stopping, which looked like phone
+     handling.
+
+   After the fixes, a phone shift costs D about 1–3 m instead of ~100 m.
+3. **Remaining error on slopes and after phone shifts.** I felt these cases still had extra error.
+   The AI's two first explanations were ruled out by its own tests. The measured cause was limited
+   information on long constant slopes. This led to barometric vertical speed: −10 to −27% median
+   error on every slope scenario.
+
+### What I added beyond the AI's plan
+
+- **Scenarios:**
+  - phone shift on an uphill and on a downhill tunnel (S12, S13);
+  - curved uphill and downhill tunnels with several exits (S14, S15). Building these exposed a
+    callout bug with multiple forks: hypotheses on an earlier, wrong exit would have fired the
+    planned exit's announcements early.
+  - a phone adjusted while stopped on a slope (S16).
+- **Visualisation:**
+  - exit announcements on the simulator map: planned points, where each estimator actually
+    announced, and a banner with what the driver hears;
+  - numbered exit signs.
+
+### What I take from it
+
+- The AI wrote the code quickly and debugged carefully once given a concrete symptom.
+- Asking "why does this number look like that?" was worth more than accepting a well-written
+  limitation.
+- The simulator itself needed as much scrutiny as the estimator: it was wrong twice, and one
+  metric (branch decision time) was flattering until it was redefined.
+- This is also why my first next step is validating on real phone recordings.
