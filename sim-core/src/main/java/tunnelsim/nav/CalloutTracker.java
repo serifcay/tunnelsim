@@ -53,10 +53,13 @@ public final class CalloutTracker {
             return fired;
         }
         double maneuver = route.maneuverOffset();
+        // MEAN fires at 50% probability (the median); CONSERVATIVE already at alpha (20% by default), i.e. early.
         double threshold = "MEAN".equalsIgnoreCase(cfg.calloutPolicy) ? 0.5 : cfg.calloutAlpha;
+        // Callouts are pending in order 1000, 400, 100 m; several may fire in one tick if the estimate jumped.
         while (!pending.isEmpty()) {
             double d = pending.get(0);
             double trueRemaining = maneuver - truthOffset;
+            // The car already passed the exit and this callout never fired: record it as missed.
             if (trueRemaining < 0) {
                 Callout c = new Callout(d, t, trueRemaining, truthSpeed, false, true);
                 callouts.add(c);
@@ -64,6 +67,8 @@ public final class CalloutTracker {
                 pending.remove(0);
                 continue;
             }
+            // Fire when the estimator is confident enough that at most d metres remain. It counts as late if the
+            // car was already more than lateTolerance closer than d.
             if (est.probRemainingBelow(maneuver, d) >= threshold) {
                 Callout c = new Callout(d, t, trueRemaining, truthSpeed, true, trueRemaining < d - cfg.lateTolerance);
                 callouts.add(c);

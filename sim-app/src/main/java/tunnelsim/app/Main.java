@@ -72,6 +72,7 @@ public class Main extends Application {
     private static final Path SCENARIO_DIR = Path.of("scenarios");
 
     private final AppState state = new AppState();
+    // base = scenario as loaded from file; working = copy with the user's changes (what actually runs).
     private ScenarioConfig base;
     private ScenarioConfig working;
     private Path scenarioFile;
@@ -90,9 +91,12 @@ public class Main extends Application {
     private final Map<String, CheckBox> estimatorBoxes = new HashMap<>();
     private final ToggleButton play = new ToggleButton("▶ Play");
     private final ComboBox<String> speedBox = new ComboBox<>();
+    // Set while code moves the timeline slider, so its listener doesn't treat that as a user seek.
     private boolean updatingTimeline;
     private Task<RunResult> running;
+    // If parameters change while a run is in progress, run once more when it finishes.
     private boolean rerunPending;
+    // Wait 250 ms after the last change before re-running, so dragging a slider doesn't start many runs.
     private final PauseTransition debounce = new PauseTransition(Duration.millis(250));
     private Stage stage;
     private final Map<String, String> args = new HashMap<>();
@@ -104,6 +108,7 @@ public class Main extends Application {
     @Override
     public void start(Stage stage) {
         this.stage = stage;
+        // Command-line options of the form --name=value (snapshot/record modes, size, scenario, ...).
         for (String a : getParameters().getRaw()) {
             if (a.startsWith("--") && a.contains("=")) {
                 args.put(a.substring(2, a.indexOf('=')), a.substring(a.indexOf('=') + 1));
@@ -115,6 +120,8 @@ public class Main extends Application {
         params = new ParameterPanel(this::requestRun);
         debounce.setOnFinished(e -> runNow());
 
+        // Layout: toolbar on top; map, strip view and charts stacked on the left; parameters, metrics and events
+        // on the right; timeline at the bottom.
         BorderPane root = new BorderPane();
         root.setTop(toolbar());
         SplitPane left = new SplitPane(map, strip, charts);
@@ -137,6 +144,8 @@ public class Main extends Application {
 
             @Override
             public void handle(long now) {
+                // Called every screen frame: while playing, advance the playhead by real elapsed time x playback
+                // speed.
                 if (last != 0 && play.isSelected() && state.result != null) {
                     double dt = (now - last) / 1e9;
                     double speed = Double.parseDouble(speedBox.getValue().replace("x", ""));
@@ -152,6 +161,7 @@ public class Main extends Application {
         }.start();
 
         loadScenarioList();
+        // Start with the scenario given on the command line, or S2 by default.
         Path initial = args.containsKey("scenario") ? Path.of(args.get("scenario"))
                 : scenarioBox.getItems().stream().filter(p -> p.getFileName().toString().startsWith("s02")).findFirst()
                 .orElse(scenarioBox.getItems().isEmpty() ? null : scenarioBox.getItems().get(0));
@@ -171,10 +181,12 @@ public class Main extends Application {
 
     // ---- Layout ---------------------------------------------------------------------------
 
+    /** Builds the top toolbar: scenario, playback, car, estimator toggles, view options, chart window, export. */
     private ToolBar toolbar() {
         scenarioBox.setPrefWidth(230);
         scenarioBox.setCellFactory(l -> pathCell());
         scenarioBox.setButtonCell(pathCell());
+        // Choosing a scenario loads and runs it.
         scenarioBox.valueProperty().addListener((o, was, now) -> {
             if (now != null) {
                 loadScenario(now);
@@ -190,6 +202,7 @@ public class Main extends Application {
         Button yaml = new Button("Edit YAML…");
         yaml.setOnAction(e -> editYaml());
 
+        // Play from the start again if the playhead is already at the end.
         play.setOnAction(e -> {
             if (play.isSelected() && state.result != null && state.time >= state.car().truth.duration() - 0.05) {
                 seek(0);
@@ -203,6 +216,7 @@ public class Main extends Application {
         speedBox.setValue("5x");
 
         carBox.setPrefWidth(110);
+        // Switching car only changes what is shown; all cars were computed in the same run.
         carBox.valueProperty().addListener((o, was, now) -> {
             if (now != null && state.result != null) {
                 state.car = Math.max(0, carBox.getItems().indexOf(now));
@@ -212,6 +226,8 @@ public class Main extends Application {
 
         HBox estimators = new HBox(6);
         estimators.setAlignment(Pos.CENTER_LEFT);
+        // One checkbox per estimator. Ticking one that was not computed adds it to the scenario and re-runs;
+        // unticking only hides it.
         for (String id : EstimatorFactory.ALL) {
             CheckBox c = new CheckBox(id);
             c.setTextFill(Palette.estimator(id));
@@ -251,6 +267,7 @@ public class Main extends Application {
         ComboBox<String> window = new ComboBox<>();
         window.getItems().addAll("±10 s", "±30 s", "±90 s", "full run");
         window.setValue("±30 s");
+        // Chart time window: a moving window around the playhead, or the whole run.
         window.valueProperty().addListener((o, was, now) -> {
             switch (now) {
                 case "±10 s" -> charts.setWindow(false, 10);
@@ -272,6 +289,7 @@ public class Main extends Application {
                 new Label("Charts"), window, export);
     }
 
+    /** Builds the right-hand side: parameter panel, metrics table and event log. */
     private VBox sidePanel() {
         ScrollPane scroll = new ScrollPane(params);
         scroll.setFitToWidth(true);
@@ -280,6 +298,7 @@ public class Main extends Application {
         metrics.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         metrics.setPrefHeight(180);
         metrics.setPlaceholder(new Label("no metrics"));
+        // Metrics table columns (see the tooltip below for what each one means).
         metrics.getColumns().add(col("est", m -> m.estimator()));
         metrics.getColumns().add(col("rms", m -> f(m.rmsTunnel())));
         metrics.getColumns().add(col("max", m -> f(m.maxTunnel())));
@@ -310,6 +329,7 @@ public class Main extends Application {
                 }
             }
         });
+        // Clicking an event jumps to 2 s before it.
         events.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> {
             if (now != null) {
                 seek(Math.max(0, now.t() - 2));
@@ -324,6 +344,7 @@ public class Main extends Application {
         return box;
     }
 
+    /** Builds the bottom bar: current time, timeline slider (drag to seek) and status text. */
     private HBox timelineBar() {
         timeline.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(timeline, Priority.ALWAYS);
@@ -342,6 +363,7 @@ public class Main extends Application {
         return bar;
     }
 
+    /** A text column of the metrics table, filled by f. */
     private static TableColumn<TrackMetrics, String> col(String name, Function<TrackMetrics, String> f) {
         TableColumn<TrackMetrics, String> c = new TableColumn<>(name);
         c.setCellValueFactory(d -> new SimpleStringProperty(f.apply(d.getValue())));
@@ -349,6 +371,7 @@ public class Main extends Application {
         return c;
     }
 
+    /** Shows scenario files by name without the .yaml extension. */
     private ListCell<Path> pathCell() {
         return new ListCell<>() {
             @Override
@@ -365,6 +388,7 @@ public class Main extends Application {
         scenarioBox.getItems().setAll(ScenarioLoader.list(SCENARIO_DIR));
     }
 
+    /** Loads a scenario file and runs it (not used in snapshot/record mode). */
     private void loadScenario(Path file) {
         if (args.containsKey("snapshot") || args.containsKey("record")) {
             return;
@@ -378,6 +402,7 @@ public class Main extends Application {
         }
     }
 
+    /** Makes cfg the scenario being edited and run; optionally resets which estimators are shown. */
     private void setWorking(ScenarioConfig cfg, boolean resetVisible) {
         working = cfg;
         if (resetVisible) {
@@ -392,6 +417,7 @@ public class Main extends Application {
         runNow();
     }
 
+    /** Keeps the visible estimators in the standard order A, B, C, D, D+E. */
     private void sortVisible() {
         List<String> sorted = new ArrayList<>(EstimatorFactory.ALL);
         sorted.retainAll(state.visible);
@@ -399,10 +425,12 @@ public class Main extends Application {
         state.visible.addAll(sorted);
     }
 
+    /** Asks for a re-run after a short pause (debounced). */
     private void requestRun() {
         debounce.playFromStart();
     }
 
+    /** Runs the working scenario on a background thread, so the window stays responsive. */
     private void runNow() {
         if (working == null) {
             return;
@@ -442,6 +470,7 @@ public class Main extends Application {
         th.start();
     }
 
+    /** A run finished: show it, keeping the selected car if it still exists. */
     private void setResult(RunResult r) {
         state.result = r;
         List<String> cars = r.cars().stream().map(c -> c.car.id).toList();
@@ -454,6 +483,7 @@ public class Main extends Application {
         resultViewsChanged();
     }
 
+    /** Refreshes every view for the current result and car (timeline range, charts, metrics, events). */
     private void resultViewsChanged() {
         CarResult car = state.car();
         if (car == null) {
@@ -473,6 +503,7 @@ public class Main extends Application {
         redrawAll();
     }
 
+    /** Moves the playhead to time t and redraws everything. */
     private void seek(double t) {
         if (state.result == null) {
             return;
@@ -491,6 +522,7 @@ public class Main extends Application {
         charts.refreshCursor();
     }
 
+    /** Opens the whole working scenario as YAML text; Apply parses it and re-runs. */
     private void editYaml() {
         if (working == null) {
             return;
@@ -516,6 +548,7 @@ public class Main extends Application {
         });
     }
 
+    /** Writes the current run (truth, sensors, estimates, events) to results/export as CSV. */
     private void exportCsv() {
         if (state.result == null) {
             return;
@@ -528,6 +561,7 @@ public class Main extends Application {
         }
     }
 
+    /** Shows an error: a dialog in the interactive app, a stack trace in snapshot/record mode. */
     private void error(String title, Throwable ex) {
         Throwable cause = ex;
         while (cause.getCause() != null && cause.getMessage() == null) {
@@ -561,6 +595,7 @@ public class Main extends Application {
         try {
             prepareHeadless(scenario);
             stage.show();
+            // Run the scenario synchronously first; recording then only replays the result.
             setResult(SimulationRun.run(ScenarioLoader.copy(working)));
             int car = Integer.parseInt(args.getOrDefault("car", "0"));
             if (car > 0 && car < carBox.getItems().size()) {
@@ -570,6 +605,7 @@ public class Main extends Application {
             double to = Math.min(state.car().truth.duration(), Double.parseDouble(args.getOrDefault("to", "1e9")));
             int fps = Integer.parseInt(args.getOrDefault("fps", "15"));
             double speed = Double.parseDouble(args.getOrDefault("speed", "4"));
+            // Number of video frames: simulated time span / playback speed x frames per second.
             int frames = (int) Math.floor((to - from) / speed * fps) + 1;
             org.jcodec.api.awt.AWTSequenceEncoder mp4 =
                     org.jcodec.api.awt.AWTSequenceEncoder.createSequenceEncoder(new File(args.get("record")), fps);
@@ -578,6 +614,7 @@ public class Main extends Application {
             GifWriter gif = args.containsKey("gif") ? new GifWriter(new File(args.get("gif")), 1000 * gifEvery / fps) : null;
             System.out.printf("recording %d frames (%.0f-%.0f s at %.0fx, %d fps)%n", frames, from, to, speed, fps);
 
+            // One frame per screen pulse: seek, redraw, snapshot the window, encode.
             int[] k = {0};
             new AnimationTimer() {
                 @Override
@@ -597,10 +634,12 @@ public class Main extends Application {
                         redrawAll();
                         java.awt.image.BufferedImage frame =
                                 SwingFXUtils.fromFXImage(stage.getScene().snapshot(null), null);
+                        // H.264 needs even width/height and a BGR image: copy the snapshot into one.
                         java.awt.image.BufferedImage rgb = new java.awt.image.BufferedImage(
                                 frame.getWidth() & ~1, frame.getHeight() & ~1, java.awt.image.BufferedImage.TYPE_3BYTE_BGR);
                         rgb.getGraphics().drawImage(frame, 0, 0, null);
                         mp4.encodeImage(rgb);
+                        // Every gifEvery-th frame also goes into the small GIF preview, scaled down smoothly.
                         if (gif != null && k[0] % gifEvery == 0) {
                             int h = gifWidth * rgb.getHeight() / rgb.getWidth();
                             java.awt.image.BufferedImage small =
@@ -650,6 +689,7 @@ public class Main extends Application {
 
     // ---- Snapshot mode --------------------------------------------------------------------
 
+    /** Runs a scenario, moves to --time, saves a PNG of the window and exits (used for the README figures). */
     private void snapshotMode(Stage stage, Scene scene, Path scenario) {
         try {
             ScenarioConfig cfg = ScenarioLoader.load(scenario);
@@ -674,6 +714,7 @@ public class Main extends Application {
             if (args.containsKey("overview")) {
                 map.setFollow(false);
             }
+            // Give JavaFX a moment to lay out and render the window before taking the picture.
             PauseTransition wait = new PauseTransition(Duration.millis(600));
             wait.setOnFinished(e -> {
                 redrawAll();

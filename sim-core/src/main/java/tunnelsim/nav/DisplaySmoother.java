@@ -22,16 +22,21 @@ public final class DisplaySmoother {
         this.tau = tau;
     }
 
+    /** Moves the displayed marker one display step (dt) towards the latest estimate. */
     public void update(Estimate e, double dt) {
         if (!e.valid()) {
             return;
         }
+        // Jump straight to the estimate on the first call, when it changes branch, or when it is too far away to
+        // blend.
         if (leaf < 0 || !net.onCommonPath(leaf, e.leaf()) || Math.abs(e.offset() - offset) > SNAP_DISTANCE) {
             leaf = e.leaf();
             offset = e.offset();
             return;
         }
         leaf = e.leaf();
+        // Advance at the estimated speed, then close a share dt/tau of the remaining gap to the estimate. Never
+        // move backwards, never past the end of the road.
         double predicted = offset + e.speed() * dt;
         double next = predicted + (e.offset() - predicted) * Math.min(1, dt / tau);
         offset = Math.min(net.pathEnd(leaf), Math.max(offset, next));

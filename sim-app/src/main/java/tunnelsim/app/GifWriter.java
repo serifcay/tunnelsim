@@ -18,6 +18,7 @@ final class GifWriter implements AutoCloseable {
     private final IIOMetadata metadata;
 
     GifWriter(File file, int delayMs) throws IOException {
+        // Use the JDK's GIF encoder in sequence mode, one image per frame.
         writer = ImageIO.getImageWritersBySuffix("gif").next();
         out = ImageIO.createImageOutputStream(file);
         writer.setOutput(out);
@@ -29,8 +30,10 @@ final class GifWriter implements AutoCloseable {
         gce.setAttribute("disposalMethod", "none");
         gce.setAttribute("userInputFlag", "FALSE");
         gce.setAttribute("transparentColorFlag", "FALSE");
+        // Frame delay is stored in hundredths of a second.
         gce.setAttribute("delayTime", Integer.toString(Math.max(1, delayMs / 10)));
         gce.setAttribute("transparentColorIndex", "0");
+        // The NETSCAPE2.0 extension makes the GIF loop forever.
         IIOMetadataNode app = new IIOMetadataNode("ApplicationExtension");
         app.setAttribute("applicationID", "NETSCAPE");
         app.setAttribute("authenticationCode", "2.0");
@@ -40,6 +43,7 @@ final class GifWriter implements AutoCloseable {
         writer.prepareWriteSequence(null);
     }
 
+    /** Appends one frame. */
     void add(BufferedImage image) throws IOException {
         writer.writeToSequence(new IIOImage(image, null, metadata), writer.getDefaultWriteParam());
     }
@@ -50,6 +54,7 @@ final class GifWriter implements AutoCloseable {
         out.close();
     }
 
+    /** Finds a metadata node by name, creating it if missing. */
     private static IIOMetadataNode child(IIOMetadataNode root, String name) {
         for (int i = 0; i < root.getLength(); i++) {
             if (root.item(i).getNodeName().equalsIgnoreCase(name)) {

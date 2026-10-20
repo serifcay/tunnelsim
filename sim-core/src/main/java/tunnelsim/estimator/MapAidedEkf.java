@@ -18,12 +18,14 @@ import tunnelsim.util.MathUtil;
  * curvature matching, which is strongly non-linear and multi-modal; that is what D adds.
  */
 public final class MapAidedEkf extends PathEstimator {
+    // Process noise: how much offset, speed and bias may drift per second beyond what the model predicts.
     private static final double Q_OFFSET = 0.05 * 0.05;
     private static final double Q_SPEED = 0.12 * 0.12;
     private static final double Q_BIAS = 0.002 * 0.002;
     private static final double GATE = 25;      // NIS gate (5 sigma)
     private static final double PRIOR_DECORRELATION = 30; // s
 
+    // State x = [offset along the path, speed, accelerometer bias] and its 3x3 covariance p (uncertainty).
     private final double[] x = new double[3];
     private final double[][] p = new double[3][3];
     private final PortalDetector portals = new PortalDetector();
@@ -45,15 +47,21 @@ public final class MapAidedEkf extends PathEstimator {
         t = event.t();
         switch (event) {
             case GnssFix fix -> {
+                // Skip GNSS if switched off for this run or too inaccurate.
                 if (!ctx.aiding().gnss || !gnss.accept(fix)) {
                     return;
                 }
+                // Project the fix onto the road: m[0] = offset along the path, m[1] = distance from the
+                // road.
                 double[] m = matchFix(fix);
                 if (m == null) {
                     return;
                 }
+                // Trust the first fixes after a tunnel less (reflections). Measurement variance r grows
+                // with the reported accuracy and with how far the fix is from the road.
                 double inflate = gnss.fixesSinceOutage() <= 5 ? 3 : 1;
                 double r = Math.pow(fix.accuracy() / 1.5 * inflate, 2) + m[1] * m[1] * 0.1;
+                // First fix: start the filter there, with the bias unknown (0 +- 0.2 m/s^2).
                 if (!initialised) {
                     x[0] = m[0];
                     x[1] = fix.speed();
@@ -64,6 +72,7 @@ public final class MapAidedEkf extends PathEstimator {
                     initialised = true;
                     return;
                 }
+                // Position update. If the fix disagrees too much (gated), count the rejection instead.
                 if (!update(new double[]{1, 0, 0}, m[0] - x[0], r, true)) {
                     if (++rejected >= 3) {
                         // Consistent rejections mean the filter, not the fixes, is wrong: re-anchor.
@@ -75,10 +84,12 @@ public final class MapAidedEkf extends PathEstimator {
                 } else {
                     rejected = 0;
                 }
+                // Speed update with the GNSS Doppler speed.
                 double sv = Math.max(0.1, fix.speedAccuracy()) * inflate;
                 update(new double[]{0, 1, 0}, fix.speed() - x[1], sv * sv, true);
             }
             case LightSample light -> {
+                // Light jump = tunnel portal: pull the offset towards the nearest portal on our path.
                 if (portals.onLight(light) && initialised && ctx.aiding().portal) {
                     double portalOffset = nearestPortalOffset();
                     if (!Double.isNaN(portalOffset)) {
@@ -89,6 +100,7 @@ public final class MapAidedEkf extends PathEstimator {
             }
             case CellChange cell -> {
                 if (initialised && ctx.aiding().cell) {
+                    // Cell handover: the car is near that cell's handover zone (coarse, sigma 100 m).
                     for (CellZone z : net.cells()) {
                         if (z.cellId() == cell.cellId() && ctx.net().isAncestorOrSelf(z.position().edge(), leaf)) {
                             update(new double[]{1, 0, 0}, net.pathOffset(z.position()) - x[0], 100 * 100, true);
@@ -112,6 +124,9 @@ public final class MapAidedEkf extends PathEstimator {
         if (imu.mountDisturbed()) {
             p[2][2] += 0.05 * 0.05; // phone moved: residual tracking error (~1% gyro scale) changes the gravity leak
         }
+        // Prediction step, run for every IMU sample (100 Hz). Acceleration = forward force minus bias
+        // minus gravity along the map slope at the estimated position, corrected for the accelerometer
+        // scale.
         MapPosition pos = position(x[0]);
         double g = net.edge(pos.edge()).grade(pos.s());
         double a = (imu.aFwd() - x[2] - MathUtil.G * g / Math.sqrt(1 + g * g)) / (1 + imu.accelScale());
@@ -128,9 +143,11 @@ public final class MapAidedEkf extends PathEstimator {
         n[2][2] += Q_BIAS * dt;
         copy(n, p);
 
+        // Zero-velocity update: when the car is stopped its speed is exactly zero.
         if (imu.stationary() && ctx.aiding().zupt) {
             update(new double[]{0, 1, 0}, -x[1], 0.05 * 0.05, false);
         }
+        // Inside tunnels, once per second: a weak pull towards the speed limit or reported traffic speed.
         if (!gnss.fresh(t) && ctx.aiding().speedPrior && !imu.stationary() && t - lastPriorT >= 1) {
             lastPriorT = t;
             double expected = net.expectedSpeed(pos);
@@ -139,6 +156,7 @@ public final class MapAidedEkf extends PathEstimator {
         }
     }
 
+    /** Offset of the portal on our path closest to the current estimate (NaN if none within 1 km). */
     private double nearestPortalOffset() {
         double best = Double.NaN, bestD = Double.MAX_VALUE;
         for (Portal portal : net.portals()) {
@@ -157,14 +175,17 @@ public final class MapAidedEkf extends PathEstimator {
 
     /** Scalar Kalman update; returns false if gated out. */
     private boolean update(double[] h, double innovation, double r, boolean gate) {
+        // Standard Kalman update for a scalar measurement z = h.x: ph = P h', s = innovation variance.
         double[] ph = new double[3];
         for (int i = 0; i < 3; i++) {
             ph[i] = p[i][0] * h[0] + p[i][1] * h[1] + p[i][2] * h[2];
         }
         double s = h[0] * ph[0] + h[1] * ph[1] + h[2] * ph[2] + r;
+        // Reject measurements more than 5 sigma away (normalised innovation squared above 25).
         if (gate && innovation * innovation / s > GATE) {
             return false;
         }
+        // Kalman gain, then correct the state and shrink the covariance: P = P - K h P.
         double[] k = {ph[0] / s, ph[1] / s, ph[2] / s};
         for (int i = 0; i < 3; i++) {
             x[i] += k[i] * innovation;
@@ -177,6 +198,7 @@ public final class MapAidedEkf extends PathEstimator {
         }
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
+                // Average with the transpose to keep the covariance exactly symmetric despite rounding.
                 p[i][j] = 0.5 * (n[i][j] + n[j][i]);
             }
         }
@@ -187,6 +209,7 @@ public final class MapAidedEkf extends PathEstimator {
 
     @Override
     public Estimate estimate() {
+        // Reported uncertainty = square root of the variances on the diagonal of P.
         return build(x[0], Math.sqrt(Math.max(0, p[0][0])), Math.max(0, x[1]), Math.sqrt(Math.max(0, p[1][1])));
     }
 
@@ -208,6 +231,7 @@ public final class MapAidedEkf extends PathEstimator {
         return x[2];
     }
 
+    /** 3x3 matrix product a*b. */
     private static double[][] mul(double[][] a, double[][] b) {
         double[][] r = new double[3][3];
         for (int i = 0; i < 3; i++) {
@@ -218,6 +242,7 @@ public final class MapAidedEkf extends PathEstimator {
         return r;
     }
 
+    /** 3x3 matrix transpose. */
     private static double[][] transpose(double[][] a) {
         double[][] r = new double[3][3];
         for (int i = 0; i < 3; i++) {
@@ -228,6 +253,7 @@ public final class MapAidedEkf extends PathEstimator {
         return r;
     }
 
+    /** Copies a 3x3 matrix into another. */
     private static void copy(double[][] src, double[][] dst) {
         for (int i = 0; i < 3; i++) {
             System.arraycopy(src[i], 0, dst[i], 0, 3);

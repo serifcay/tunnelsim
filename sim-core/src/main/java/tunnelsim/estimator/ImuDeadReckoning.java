@@ -10,6 +10,7 @@ import tunnelsim.sensor.SensorEvent.GnssFix;
  * stop detection, no priors. Shows the classic quadratic drift and the effect of road grade.
  */
 public final class ImuDeadReckoning extends PathEstimator {
+    // Averaging time of the bias estimate [s].
     private static final double BIAS_TAU = 30;
 
     private double offset;
@@ -39,6 +40,8 @@ public final class ImuDeadReckoning extends PathEstimator {
             if (m == null) {
                 return;
             }
+            // Bias = mean measured forward acceleration minus the acceleration GNSS saw (speed change),
+            // averaged slowly. Note: no slope correction, on purpose; this is the naive baseline.
             if (prevFix != null && accCount > 0 && fix.t() - prevFix.t() < 1.5) {
                 double dvdt = (fix.speed() - prevFix.speed()) / (fix.t() - prevFix.t());
                 double innovation = accSum / accCount - dvdt;
@@ -60,14 +63,17 @@ public final class ImuDeadReckoning extends PathEstimator {
         double dt = Double.isNaN(lastImuT) ? 0 : imu.t() - lastImuT;
         lastImuT = imu.t();
         t = imu.t();
+        // Sum of forward acceleration since the last fix, for the bias estimate.
         accSum += imu.aFwd();
         accCount++;
         if (!initialised) {
             return;
         }
+        // Remember when GNSS was lost; the uncertainty grows from then on.
         if (!gnss.fresh(imu.t()) && Double.isNaN(outageStart)) {
             outageStart = imu.t();
         }
+        // Integrate acceleration into speed and speed into distance (trapezoidal rule).
         double v = Math.max(0, speed + (imu.aFwd() - bias) / (1 + imu.accelScale()) * dt);
         offset = clampOffset(offset + 0.5 * (speed + v) * dt);
         speed = v;

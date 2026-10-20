@@ -27,8 +27,10 @@ public final class LightModel {
         this.rng = rng;
     }
 
+    /** Produces the run's light-sensor readings (5 Hz) as the car drives in and out of tunnels. */
     public List<LightSample> generate(TruthTrajectory truth) {
         List<LightSample> out = new ArrayList<>();
+        // Outdoor light level for this run (somewhere between overcast and sunny, or night).
         double outside = net.night() ? c.nightLux : rng.inRange(c.dayLux);
         double period = 1.0 / c.rate;
         double filtered = outside;
@@ -36,6 +38,7 @@ public final class LightModel {
         for (int i = 0; i < truth.size(); i++) {
             double t = truth.t(i);
             double lux = trueLux(truth, i, outside);
+            // The sensor reacts with a lag (first-order filter), then reports with a few percent of noise.
             filtered += (lux - filtered) * truth.dt / c.lag;
             if (t >= next) {
                 out.add(new LightSample(t, Math.max(0, filtered * (1 + rng.gaussian(c.noiseFraction)))));
@@ -45,6 +48,7 @@ public final class LightModel {
         return out;
     }
 
+    /** Light actually reaching the phone at truth sample i. */
     private double trueLux(TruthTrajectory truth, int i, double outside) {
         int tun = truth.tunnel(i);
         if (tun < 0) {
@@ -58,14 +62,17 @@ public final class LightModel {
                 d = Math.min(d, Math.hypot(truth.x(i) - p.x(), truth.y(i) - p.y()));
             }
         }
+        // Tunnels light their entrance brightly and dim towards the interior, so eyes can adapt.
         double inside = c.tunnelLux;
         if (!net.night() && d < c.entranceLength) {
             double entrance = Math.max(c.tunnelLux, c.entranceFraction * outside);
             inside = entrance + (c.tunnelLux - entrance) * d / c.entranceLength;
         }
+        // Ceiling lights pass overhead at regular spacing: a small periodic ripple.
         if (tc.lightSpacing > 0) {
             inside *= 1 + c.lightModulation * Math.cos(2 * Math.PI * truth.offset(i) / tc.lightSpacing);
         }
+        // Close to a portal, daylight leaks in and blends with the tunnel lighting.
         return inside + (outside - inside) * Math.exp(-d / c.daylightLeak);
     }
 }

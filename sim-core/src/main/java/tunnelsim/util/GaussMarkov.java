@@ -18,11 +18,13 @@ public final class GaussMarkov {
         this.value = rng.gaussian(sigma);
     }
 
+    /** Advances the process by dt and returns the new value. */
     public double step(double dt) {
         if (tau <= 0) {
             value = rng.gaussian(sigma);
             return value;
         }
+        // Keep a share phi of the old value and add fresh noise, sized so the spread stays at sigma.
         double phi = Math.exp(-dt / tau);
         value = phi * value + rng.gaussian(sigma * Math.sqrt(1 - phi * phi));
         return value;

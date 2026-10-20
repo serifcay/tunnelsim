@@ -1,15 +1,19 @@
 package tunnelsim.util;
 
+/** Small maths helpers and physical constants. */
 public final class MathUtil {
+    // Standard gravity [m/s^2].
     public static final double G = 9.80665;
 
     private MathUtil() {
     }
 
+    /** Limits x to the range [lo, hi]. */
     public static double clamp(double x, double lo, double hi) {
         return Math.max(lo, Math.min(hi, x));
     }
 
+    /** Brings an angle into the range [-pi, pi]. */
     public static double wrapAngle(double a) {
         while (a > Math.PI) {
             a -= 2 * Math.PI;
@@ -20,6 +24,7 @@ public final class MathUtil {
         return a;
     }
 
+    /** Linear interpolation: a at f = 0, b at f = 1. */
     public static double lerp(double a, double b, double f) {
         return a + (b - a) * f;
     }

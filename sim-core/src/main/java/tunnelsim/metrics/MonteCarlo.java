@@ -45,9 +45,14 @@ public final class MonteCarlo {
     private record Digest(String estimator, TrackMetrics metrics, List<Callout> callouts, Map<Integer, Double> binMax) {
     }
 
+    /**
+     * Runs the scenario with {@code runs} different seeds (in parallel) and aggregates the metrics per
+     * estimator.
+     */
     public static Result run(ScenarioConfig base, int runs) {
         List<List<Digest>> digests = IntStream.range(0, runs).parallel().mapToObj(k -> {
             ScenarioConfig cfg = ScenarioLoader.copy(base);
+            // A new seed changes everything random: driver, phone mount, sensor noise, estimator randomness.
             cfg.seed = base.seed * 7919 + k;
             RunResult r = SimulationRun.run(cfg, true);
             List<Digest> d = new ArrayList<>();
@@ -61,6 +66,7 @@ public final class MonteCarlo {
         }).toList();
 
         Map<String, Summary> out = new LinkedHashMap<>();
+        // Pool the digests per estimator into distributions.
         for (String est : base.estimators) {
             List<Double> rms = new ArrayList<>(), max = new ArrayList<>(), exit = new ArrayList<>(),
                     callout = new ArrayList<>(), branch = new ArrayList<>(), recovery = new ArrayList<>();
@@ -100,6 +106,7 @@ public final class MonteCarlo {
                 }
             }
             List<double[]> curve = new ArrayList<>();
+            // Error-versus-time curve: per 5 s bin, the median and 95th percentile over all runs.
             byBin.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(en -> {
                 double[] v = en.getValue().stream().mapToDouble(Double::doubleValue).sorted().toArray();
                 curve.add(new double[]{en.getKey() * BIN, pct(v, 0.5), pct(v, 0.95), v.length});
@@ -127,6 +134,7 @@ public final class MonteCarlo {
             if (tun < 0 || Double.isNaN(entry) || Double.isNaN(s.error())) {
                 continue;
             }
+            // Time since entering the current tunnel, in 5 s bins; keep the largest error per bin.
             int bin = (int) ((s.t() - entry) / BIN);
             runMax.merge(bin, Math.abs(s.error()), Math::max);
         }

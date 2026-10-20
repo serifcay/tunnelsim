@@ -12,6 +12,8 @@ public final class Edge {
     public final int id;
     public final String name;
     public final RoadGeometry geometry;
+    // Where this edge starts on its geometry (main-road pieces share one geometry), its length, and its parent
+    // edge (-1 for the first one).
     public final double geometryOffset;
     public final double length;
     public final int parent;
@@ -40,10 +42,12 @@ public final class Edge {
         return children;
     }
 
+    /** True for the last edge of a path (no fork after it). */
     public boolean isLeaf() {
         return children.isEmpty();
     }
 
+    /** Road geometry at distance s along this edge (s is clamped to the edge). */
     public Pose pose(double s) {
         return geometry.pose(geometryOffset + clamp(s));
     }
@@ -70,6 +74,7 @@ public final class Edge {
 
     /** Returns {s, distance} of the point on this edge nearest to (px, py). */
     public double[] nearest(double px, double py) {
+        // Search only this edge's part of the geometry, then convert back to edge coordinates.
         double[] r = geometry.nearest(px, py, geometryOffset, geometryOffset + length);
         r[0] -= geometryOffset;
         return r;

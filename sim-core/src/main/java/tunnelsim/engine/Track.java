@@ -37,6 +37,7 @@ public final class Track {
         if (samples.isEmpty()) {
             return null;
         }
+        // Samples are recorded every RECORD_DT seconds from t = 0, so the index follows from the time.
         int i = (int) Math.floor(t / RunConstants.RECORD_DT + 1e-9);
         return samples.get(Math.max(0, Math.min(samples.size() - 1, i)));
     }

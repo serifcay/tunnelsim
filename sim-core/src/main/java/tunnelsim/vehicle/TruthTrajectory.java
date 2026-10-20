@@ -15,6 +15,8 @@ public final class TruthTrajectory {
     /** Leaf edge of the path the car actually drives. */
     public final int leaf;
     private int n;
+    // One array per quantity; index i is the i-th time step. offset = distance from the start along the car's
+    // path.
     private double[] t, offset, s, x, y, z, heading, pitch, roll, v, a, curvature, grade;
     private int[] edge, tunnel;
     private final List<MountChange> mountChanges = new ArrayList<>();
@@ -43,6 +45,7 @@ public final class TruthTrajectory {
         tunnel = new int[capacity];
     }
 
+    /** Appends one time step (grows the arrays when full). */
     void add(double tt, int e, double ss, double off, double xx, double yy, double zz, double h, double p, double r,
              double vv, double aa, double k, double g, int tun) {
         if (n == t.length) {
@@ -70,6 +73,7 @@ public final class TruthTrajectory {
         mountChanges.add(change);
     }
 
+    /** Doubles the capacity of every array. */
     private void grow() {
         int cap = t.length * 2;
         t = Arrays.copyOf(t, cap);
@@ -97,7 +101,10 @@ public final class TruthTrajectory {
         return n == 0 ? 0 : t[n - 1];
     }
 
-    /** Index of the sample at or just before time {@code time}. */
+    /**
+     * Index of the sample at or just before time {@code time}. Steps are evenly spaced, so this is
+     * simply time / dt, clamped to the recorded range.
+     */
     public int indexAt(double time) {
         int i = (int) Math.floor(time / dt + 1e-9);
         return Math.max(0, Math.min(n - 1, i));
@@ -172,6 +179,7 @@ public final class TruthTrajectory {
         return mountChanges;
     }
 
+    /** Phone orientation in effect at a given time: the latest change at or before it. */
     public double[] mountAt(double time) {
         double[] r = mountChanges.get(0).bodyToPhone();
         for (MountChange c : mountChanges) {

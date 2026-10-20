@@ -19,7 +19,9 @@ public final class CsvExport {
     private CsvExport() {
     }
 
+    /** Writes the run to baseDir/<scenario>-seed<n>/<car>/*.csv and returns the scenario folder. */
     public static Path write(RunResult run, Path baseDir) {
+        // Folder name from the scenario name (unsafe characters replaced) and the seed.
         String name = run.scenario().name.replaceAll("[^A-Za-z0-9_-]+", "_") + "-seed" + run.scenario().seed;
         Path dir = baseDir.resolve(name);
         for (CarResult car : run.cars()) {
@@ -45,6 +47,7 @@ public final class CsvExport {
         return dir;
     }
 
+    /** True trajectory, thinned to 10 Hz (every 10th 100 Hz sample). */
     private static void writeTruth(TruthTrajectory t, Path file) throws IOException {
         try (PrintWriter w = new PrintWriter(Files.newBufferedWriter(file))) {
             w.println("t,edge,s,path_offset,x,y,z,heading,pitch,roll,v,a,curvature,grade,tunnel");
@@ -56,6 +59,7 @@ public final class CsvExport {
         }
     }
 
+    /** One estimator's 10 Hz output, with its error against the truth. */
     private static void writeTrack(Track track, Path file) throws IOException {
         try (PrintWriter w = new PrintWriter(Files.newBufferedWriter(file))) {
             w.println("t,valid,mode,edge,s,path_offset,sigma,speed,sigma_speed,p_off_route,error,wrong_branch,display_error");
@@ -68,6 +72,7 @@ public final class CsvExport {
         }
     }
 
+    /** One CSV per sensor type, in the layout a real phone recording would be converted to. */
     private static void writeSensors(CarResult car, Path d) throws IOException {
         try (PrintWriter imu = writer(d, "imu.csv", "t,ax,ay,az,gx,gy,gz");
              PrintWriter gnss = writer(d, "gnss.csv", "t,x,y,accuracy,speed,speed_accuracy,bearing");

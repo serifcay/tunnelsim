@@ -17,6 +17,7 @@ import java.util.function.DoubleConsumer;
  * tunnel intervals, shows the playhead, and follows it with a moving window or shows the full run.
  */
 final class TimeSeriesChart extends CanvasPane {
+    /** One line on the chart: times, values, an optional band (lower/upper) and whether it is dashed. */
     record Series(String name, Color color, double[] t, double[] y, double[] lower, double[] upper, boolean dashed) {
         static Series line(String name, Color color, double[] t, double[] y) {
             return new Series(name, color, t, y, null, null, false);
@@ -40,6 +41,7 @@ final class TimeSeriesChart extends CanvasPane {
     TimeSeriesChart(String title, String unit) {
         this.title = title;
         this.unit = unit;
+        // Clicking in the plot jumps the playhead to that time.
         setOnMouseClicked(e -> {
             if (onSeek != null && e.getX() > LEFT) {
                 double[] r = timeRange();
@@ -48,6 +50,7 @@ final class TimeSeriesChart extends CanvasPane {
         });
     }
 
+    /** Replaces the plotted series, the shaded (tunnel) intervals and the run length. */
     void setSeries(List<Series> s, List<double[]> shadedIntervals, double end) {
         series.clear();
         series.addAll(s);
@@ -80,6 +83,7 @@ final class TimeSeriesChart extends CanvasPane {
         onSeek = c;
     }
 
+    /** Visible time range: the whole run, or a window centred on the playhead. */
     private double[] timeRange() {
         if (full) {
             return new double[]{0, runEnd};
@@ -87,6 +91,7 @@ final class TimeSeriesChart extends CanvasPane {
         return new double[]{cursor - halfWindow, cursor + halfWindow};
     }
 
+    /** Draws axes, tunnel shading, bands, lines, playhead and legend for the visible time range. */
     @Override
     void redraw() {
         GraphicsContext g = g();
@@ -171,6 +176,7 @@ final class TimeSeriesChart extends CanvasPane {
                 continue;
             }
             int a = Math.max(0, lowerIndex(s.t(), t0)), b = Math.min(s.t().length, lowerIndex(s.t(), t1) + 2);
+            // Bands: about one point per pixel is enough, so skip samples when there are many.
             int stride = Math.max(1, (b - a) / (int) Math.max(1, pw));
             List<double[]> upper = new ArrayList<>(), lower = new ArrayList<>();
             for (int i = a; i < b; i += stride) {
@@ -231,11 +237,14 @@ final class TimeSeriesChart extends CanvasPane {
             g.setLineDashes(5, 4);
         }
         g.beginPath();
+        // Per-pixel min/max: all samples falling into one pixel column are reduced to a short vertical stroke from
+        // their minimum to their maximum. That keeps 100 Hz series fast to draw and still shows every peak.
         boolean pen = false;
         int col = Integer.MIN_VALUE;
         double cmin = 0, cmax = 0, last = 0;
         for (int i = a; i < b; i++) {
             double v = s.y()[i];
+            // A missing value (NaN) breaks the line, e.g. during a GNSS outage.
             if (!Double.isFinite(v)) {
                 if (col != Integer.MIN_VALUE) {
                     flush(g, col, cmin, cmax, last, pen);
@@ -265,6 +274,7 @@ final class TimeSeriesChart extends CanvasPane {
         g.setLineDashes();
     }
 
+    /** Draws one pixel column of a line: from its minimum to its maximum, ending at the last value. */
     private static boolean flush(GraphicsContext g, int col, double cmin, double cmax, double last, boolean pen) {
         if (!pen) {
             g.moveTo(col, cmin);
@@ -276,15 +286,18 @@ final class TimeSeriesChart extends CanvasPane {
         return true;
     }
 
+    /** Value as plotted: log10 on a log-scale chart. */
     private double val(double v) {
         return log ? Math.log10(Math.max(1e-3, v)) : v;
     }
 
+    /** Index of the last time <= x (binary search). */
     private static int lowerIndex(double[] t, double x) {
         int i = Arrays.binarySearch(t, x);
         return i >= 0 ? i : -i - 2;
     }
 
+    /** Rounds a grid step to 1, 2 or 5 times a power of ten. */
     private static double niceStep(double m) {
         if (m <= 0 || !Double.isFinite(m)) {
             return 1;
@@ -294,6 +307,7 @@ final class TimeSeriesChart extends CanvasPane {
         return (f < 2 ? 1 : f < 5 ? 2 : 5) * p;
     }
 
+    /** Axis label formatting: fewer decimals for larger numbers. */
     private static String fmt(double v) {
         double a = Math.abs(v);
         if (a >= 1000) {

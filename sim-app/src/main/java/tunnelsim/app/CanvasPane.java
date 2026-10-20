@@ -10,6 +10,7 @@ abstract class CanvasPane extends Pane {
 
     CanvasPane() {
         getChildren().add(canvas);
+        // The canvas always fills the pane, and the view redraws whenever its size changes.
         canvas.widthProperty().bind(widthProperty());
         canvas.heightProperty().bind(heightProperty());
         canvas.widthProperty().addListener(o -> redraw());
@@ -29,5 +30,6 @@ abstract class CanvasPane extends Pane {
         return canvas.getGraphicsContext2D();
     }
 
+    /** Draws the whole view. */
     abstract void redraw();
 }

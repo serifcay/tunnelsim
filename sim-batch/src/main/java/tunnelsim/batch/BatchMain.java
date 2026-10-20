@@ -23,29 +23,35 @@ import java.util.List;
  */
 public class BatchMain {
     public static void main(String[] args) {
+        // The first argument is the mode, unless it is already a scenario file, in which case the mode defaults to
+        // "single". Everything after the mode (and the study name, for "study") is options and scenario files.
         String mode = args.length > 0 && !args[0].endsWith(".yaml") ? args[0] : "single";
         List<String> rest = new ArrayList<>(List.of(args));
         if (!rest.isEmpty() && rest.get(0).equals(mode)) {
             rest.remove(0);
         }
         String study = mode.equals("study") && !rest.isEmpty() ? rest.remove(0) : null;
+        // Optional "-n RUNS" sets the number of Monte Carlo runs (default 50).
         int runs = 50;
         if (rest.size() >= 2 && rest.get(0).equals("-n")) {
             runs = Integer.parseInt(rest.get(1));
             rest = rest.subList(2, rest.size());
         }
+        // No files given means every scenario in the scenarios/ folder.
         List<Path> files = rest.isEmpty()
                 ? ScenarioLoader.list(Path.of("scenarios"))
                 : rest.stream().map(Path::of).toList();
 
         switch (mode) {
             case "single" -> {
+                // One deterministic run per scenario, printed as a metrics table.
                 for (Path file : files) {
                     RunResult run = SimulationRun.run(ScenarioLoader.load(file));
                     System.out.println(MetricsTable.format(run));
                 }
             }
             case "mc" -> {
+                // Many randomised runs per scenario, printed as percentiles, with the wall-clock time taken.
                 for (Path file : files) {
                     ScenarioConfig cfg = ScenarioLoader.load(file);
                     long t0 = System.nanoTime();
@@ -55,6 +61,7 @@ public class BatchMain {
                 }
             }
             case "export" -> {
+                // Write one run's truth, sensor streams and estimates to CSV for analysis elsewhere.
                 for (Path file : files) {
                     Path dir = CsvExport.write(SimulationRun.run(ScenarioLoader.load(file)), Path.of("results", "export"));
                     System.out.println("exported " + file + " to " + dir);
@@ -63,8 +70,10 @@ public class BatchMain {
             case "study" -> {
                 Studies st = new Studies(runs, Path.of("results"));
                 List<Path> all = ScenarioLoader.list(Path.of("scenarios"));
+                // The slower studies use a core set of six representative scenarios instead of all of them.
                 List<Path> core = all.stream().filter(p -> List.of("s02", "s03", "s04", "s11", "s12", "s16").stream()
                         .anyMatch(p.getFileName().toString()::startsWith)).toList();
+                // Run the named study, or all of them in turn.
                 String name = study == null ? "all" : study;
                 if (name.equals("curves") || name.equals("all")) {
                     st.curves(rest.isEmpty() ? all : files);

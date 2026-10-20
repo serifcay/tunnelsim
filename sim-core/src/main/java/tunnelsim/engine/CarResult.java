@@ -15,6 +15,7 @@ public final class CarResult {
     public final CarConfig car;
     public final TruthTrajectory truth;
     public final SensorLog log;
+    // Per estimator id: its recorded track and its summary metrics; plus the event log of this car.
     public final Map<String, Track> tracks = new LinkedHashMap<>();
     public final Map<String, TrackMetrics> metrics = new LinkedHashMap<>();
     public final List<RunEvent> events = new ArrayList<>();

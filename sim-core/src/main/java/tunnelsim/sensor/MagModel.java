@@ -25,8 +25,10 @@ public final class MagModel {
         this.rng = rng;
     }
 
+    /** Produces the run's magnetometer readings; mainly to show they are unusable inside tunnels. */
     public List<MagSample> generate(TruthTrajectory truth) {
         List<MagSample> out = new ArrayList<>();
+        // Constant field from the car's own steel ("hard iron"), fixed in car axes.
         double[] hardIron = {rng.gaussian(10), rng.gaussian(10), rng.gaussian(10)};
         // Spatial disturbance: a sum of sinusoids along the road with random wavelengths and phases.
         int terms = 6;
@@ -41,11 +43,13 @@ public final class MagModel {
         for (double t = 0; t <= truth.duration(); t += period) {
             int i = truth.indexAt(t);
             double[] b = EARTH.clone();
+            // Inside tunnels, rebar and cables add a strong field that changes along the road.
             if (truth.tunnel(i) >= 0) {
                 for (double[] w : wave) {
                     b[(int) w[2]] += w[3] * Math.sin(2 * Math.PI * truth.offset(i) / w[0] + w[1]);
                 }
             }
+            // Rotate the field into car axes, add the car's own field, then rotate into phone axes.
             double[] rnb = Rot.bodyToNav(truth.heading(i), truth.pitch(i), truth.roll(i));
             double[] body = Rot.apply(Rot.transpose(rnb), b);
             for (int k = 0; k < 3; k++) {

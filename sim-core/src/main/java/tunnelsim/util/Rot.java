@@ -22,6 +22,7 @@ public final class Rot {
         return mul(rz, mul(ry, rx));
     }
 
+    /** Matrix product a*b. */
     public static double[] mul(double[] a, double[] b) {
         double[] r = new double[9];
         for (int i = 0; i < 3; i++) {
@@ -32,6 +33,7 @@ public final class Rot {
         return r;
     }
 
+    /** Matrix times vector: m*v. */
     public static double[] apply(double[] m, double[] v) {
         return new double[]{
             m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
@@ -39,10 +41,12 @@ public final class Rot {
             m[6] * v[0] + m[7] * v[1] + m[8] * v[2]};
     }
 
+    /** Transpose; for a rotation this is its inverse. */
     public static double[] transpose(double[] m) {
         return new double[]{m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]};
     }
 
+    /** Rotation by an angle about an axis (Rodrigues' formula). */
     public static double[] axisAngle(double[] axis, double angle) {
         double n = norm(axis);
         double x = axis[0] / n, y = axis[1] / n, z = axis[2] / n;
@@ -58,18 +62,22 @@ public final class Rot {
         return new double[]{r0[0], r0[1], r0[2], r1[0], r1[1], r1[2], r2[0], r2[1], r2[2]};
     }
 
+    /** Dot product. */
     public static double dot(double[] a, double[] b) {
         return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     }
 
+    /** Cross product a x b (perpendicular to both). */
     public static double[] cross(double[] a, double[] b) {
         return new double[]{a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
     }
 
+    /** Length of a vector. */
     public static double norm(double[] a) {
         return Math.sqrt(dot(a, a));
     }
 
+    /** Vector scaled to length 1. */
     public static double[] normalize(double[] a) {
         double n = norm(a);
         return new double[]{a[0] / n, a[1] / n, a[2] / n};

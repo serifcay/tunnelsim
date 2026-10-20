@@ -14,10 +14,12 @@ public final class SensorSuite {
     private SensorSuite() {
     }
 
+    /** Runs every sensor model the device has, each with its own random stream, and merges the results by time. */
     public static SensorLog record(TruthTrajectory truth, RoadNetwork net, ScenarioConfig cfg, long seed) {
         SensorsConfig s = cfg.sensors;
         DeviceProfile device = DeviceProfile.valueOf(cfg.device);
         List<List<? extends SensorEvent>> streams = new ArrayList<>();
+        // IMU, GNSS and magnetometer exist on every phone; the others depend on the device profile and options.
         streams.add(new ImuModel(s, device.imuQuality, Rng.derive(seed, "imu")).generate(truth));
         streams.add(new GnssModel(s.gnss, net, device.gnssRaw, Rng.derive(seed, "gnss")).generate(truth));
         if (device.baro && s.baro.enabled) {
@@ -36,12 +38,14 @@ public final class SensorSuite {
         if (cfg.options.obd) {
             streams.add(RadioModels.obd(truth, s.obd, Rng.derive(seed, "obd")));
         }
+        // Optional: sensor timestamps slightly wrong, as on real phones.
         if (s.timestampJitter > 0) {
             streams = jitter(streams, s.timestampJitter, Rng.derive(seed, "jitter"));
         }
         return new SensorLog(streams);
     }
 
+    /** Shifts every event's timestamp by a small random amount. */
     private static List<List<? extends SensorEvent>> jitter(List<List<? extends SensorEvent>> streams, double sigma, Rng rng) {
         List<List<? extends SensorEvent>> out = new ArrayList<>();
         for (List<? extends SensorEvent> stream : streams) {
@@ -54,6 +58,7 @@ public final class SensorSuite {
         return out;
     }
 
+    /** Copy of an event with its time shifted by dt (records are immutable). */
     private static SensorEvent shift(SensorEvent e, double dt) {
         return switch (e) {
             case SensorEvent.ImuSample s -> new SensorEvent.ImuSample(s.t() + dt, s.ax(), s.ay(), s.az(), s.gx(), s.gy(), s.gz());

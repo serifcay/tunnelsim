@@ -15,17 +15,21 @@ public final class StationaryDetector {
     private static final double DEPART = 0.15;     // m/s^2 change of the specific-force vector
     private static final double MAX_RATE = 0.03;   // rad/s
 
+    // Ring buffer of the last WINDOW force magnitudes, with running sum and sum of squares.
     private final double[] buf = new double[WINDOW];
     private int count;
     private int idx;
     private double sum;
     private double sumSq;
     private boolean stationary;
+    // Lightly filtered force vector, and its value when the car stopped (the "at rest" reference).
     private final double[] fast = new double[3];
     private final double[] ref = new double[3];
     private boolean fastInit;
 
+    /** Feeds one IMU sample; returns whether the car is currently considered stopped. */
     public boolean update(double fx, double fy, double fz, double wx, double wy, double wz) {
+        // Update the sliding window with the newest magnitude, dropping the oldest one.
         double m = Math.sqrt(fx * fx + fy * fy + fz * fz);
         if (count == WINDOW) {
             double old = buf[idx];
@@ -47,19 +51,24 @@ public final class StationaryDetector {
         if (count < WINDOW) {
             return stationary;
         }
+        // How much the force magnitude shakes over the window, and how fast the phone rotates.
         double mean = sum / count;
         double std = Math.sqrt(Math.max(0, sumSq / count - mean * mean));
         double rate = Math.sqrt(wx * wx + wy * wy + wz * wz);
         if (stationary) {
+            // Stay stopped while the force vector stays at its resting value and shaking stays low.
+            // (The exit threshold is a bit higher than the entry one, so the state doesn't flicker.)
             double dx = fast[0] - ref[0], dy = fast[1] - ref[1], dz = fast[2] - ref[2];
             boolean departed = Math.sqrt(dx * dx + dy * dy + dz * dz) > DEPART;
             stationary = !departed && std < EXIT && rate < 2 * MAX_RATE;
             if (stationary) {
+                // Let the reference follow very slow changes while stopped.
                 for (int k = 0; k < 3; k++) {
                     ref[k] += (fast[k] - ref[k]) * 0.002;
                 }
             }
         } else if (std < ENTER && rate < MAX_RATE) {
+            // Little shaking and no rotation: the car has stopped. Remember the force at rest.
             stationary = true;
             System.arraycopy(fast, 0, ref, 0, 3);
         }

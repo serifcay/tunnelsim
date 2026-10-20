@@ -20,6 +20,7 @@ public final class SensorLog {
         return events;
     }
 
+    /** All events of one type, e.g. of(GnssFix.class), in time order. */
     public <T extends SensorEvent> List<T> of(Class<T> type) {
         List<T> out = new ArrayList<>();
         for (SensorEvent e : events) {

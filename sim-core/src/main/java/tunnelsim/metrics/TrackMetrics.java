@@ -38,10 +38,12 @@ public record TrackMetrics(String estimator, double rmsTunnel, double maxTunnel,
                            double maxDisplayJump, double within2Sigma, double nees, double runtimeMs,
                            int reinitialisations) {
 
+    /** Largest error over all tunnel exits in the run. */
     public double maxExitError() {
         return Arrays.stream(exitError).max().orElse(Double.NaN);
     }
 
+    /** Computes all metrics of one estimator's track against the car's truth. */
     public static TrackMetrics compute(Track track, CarResult car, RoadNetwork net, Route route) {
         TruthTrajectory truth = car.truth;
         List<Double> tunnelErr = new ArrayList<>();
@@ -55,6 +57,8 @@ public record TrackMetrics(String estimator, double rmsTunnel, double maxTunnel,
         for (Track.Sample s : track.samples) {
             int i = truth.indexAt(s.t());
             int tun = truth.tunnel(i);
+            // Inside a tunnel: collect the error, and check it against the estimator's own claimed uncertainty
+            // (within 2 sigma? normalised squared error).
             if (tun >= 0 && s.estimate().valid() && !Double.isNaN(s.error())) {
                 double e = s.error();
                 tunnelErr.add(Math.abs(e));
@@ -65,12 +69,14 @@ public record TrackMetrics(String estimator, double rmsTunnel, double maxTunnel,
                 }
                 nees += e * e / (sig * sig);
             }
+            // The car just left a tunnel: the error of the last sample inside is the exit error.
             if (tun < 0 && prevTunnel >= 0 && prev != null && !Double.isNaN(prev.error())) {
                 exitErr.add(Math.abs(prev.error()));
             }
             if (s.displayWrong()) {
                 wrongShown += 0.1;
             }
+            // Jump of the displayed marker = how much it moved beyond how much the car moved.
             if (prev != null && prev.displayLeaf() >= 0 && s.displayLeaf() >= 0) {
                 double moved = s.displayOffset() - prev.displayOffset();
                 double truthMoved = truth.offset(i) - prevTruthOffset;
@@ -81,6 +87,7 @@ public record TrackMetrics(String estimator, double rmsTunnel, double maxTunnel,
             prevTruthOffset = truth.offset(i);
         }
         int nT = tunnelErr.size();
+        // Sorted errors give the maximum and the 95th percentile.
         double[] sorted = tunnelErr.stream().mapToDouble(Double::doubleValue).sorted().toArray();
 
         // Callouts.
@@ -124,6 +131,8 @@ public record TrackMetrics(String estimator, double rmsTunnel, double maxTunnel,
             double dt = Double.isNaN(lastBelow) ? 0 : lastBelow + tunnelsim.engine.RunConstants.RECORD_DT - tf;
             decision = Double.isNaN(decision) ? dt : Math.max(decision, dt);
         }
+        // Reroute latency: time from leaving the route to the reroute event. A reroute while the car is still on
+        // the route is a false alarm.
         for (RunEvent ev : track.events) {
             if (ev.type() == RunEvent.Type.REROUTE) {
                 if (Double.isNaN(tOffRoute) || ev.t() < tOffRoute - 1) {
@@ -136,6 +145,7 @@ public record TrackMetrics(String estimator, double rmsTunnel, double maxTunnel,
 
         // Recovery after each outage.
         double recovery = Double.NaN;
+        // Recovery: after each GNSS outage, time until the error is back under 10 m on the right branch.
         for (double[] outage : car.gnssOutages) {
             double back = outage[1];
             double rec = Double.NaN;

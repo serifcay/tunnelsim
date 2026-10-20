@@ -16,6 +16,7 @@ public final class MetricsTable {
         sb.append(String.format(Locale.ROOT, "%-10s %-4s %8s %8s %8s %8s %9s %5s %8s %8s %8s %7s %6s %7s%n",
                 "car", "est", "rmsTun", "maxTun", "p95Tun", "exitErr", "callout", "late", "branch", "reroute",
                 "recover", "jump", "in2sig", "ms"));
+        // One row per car and estimator, columns as in the header above.
         for (CarResult car : run.cars()) {
             for (TrackMetrics m : car.metrics.values()) {
                 sb.append(String.format(Locale.ROOT, "%-10s %-4s %8s %8s %8s %8s %9s %5d %8s %8s %8s %7s %6s %7.0f%n",
@@ -28,6 +29,7 @@ public final class MetricsTable {
         return sb.toString();
     }
 
+    /** Number formatting for the table: '-' for not applicable, no decimals for large values. */
     private static String f(double v) {
         if (Double.isNaN(v)) {
             return "-";

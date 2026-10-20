@@ -28,20 +28,25 @@ public final class ImuModel {
         this.rng = rng;
     }
 
+    /** Produces the whole run's accelerometer and gyroscope samples from the true trajectory. */
     public List<ImuSample> generate(TruthTrajectory truth) {
         List<ImuSample> out = new ArrayList<>();
+        // Take every step-th truth sample to get the configured IMU rate (100 Hz truth -> 100 Hz IMU: step 1).
         int step = Math.max(1, (int) Math.round(1.0 / (cfg.accel.rate * truth.dt)));
         double dt = step * truth.dt;
 
+        // Each phone gets its own fixed errors (bias, scale, cross-axis), drawn once per run.
         AxisErrors acc = new AxisErrors(cfg.accel, quality, rng);
         AxisErrors gyr = new AxisErrors(cfg.gyro, quality, rng);
         double idlePhase = rng.uniform(0, 2 * Math.PI);
+        // Tunnel air is a few degrees warmer or colder than outside; that slowly shifts the IMU biases.
         double tunnelTempTarget = rng.uniform(-5, 5);
         double temp = 0;
         SensorsConfig.VibrationConfig vib = cfg.vibration;
 
         for (int i = 0; i < truth.size(); i += step) {
             double t = truth.t(i);
+            // What a perfect IMU fixed to the car body would measure.
             double[] f = specificForceBody(truth, i);
             double[] w = angularRateBody(truth, i);
 
@@ -56,6 +61,7 @@ public final class ImuModel {
                 vibAcc = new double[]{0.3 * idle + rng.gaussian(0.002), rng.gaussian(0.002), idle + rng.gaussian(0.002)};
             }
             for (int k = 0; k < 3; k++) {
+                // Vibration shakes the accelerometer, and a little of it couples into the gyroscope.
                 f[k] += vibAcc[k];
                 w[k] += vib.gyroCoupling * vibAcc[(k + 1) % 3];
             }
@@ -64,6 +70,8 @@ public final class ImuModel {
             double target = truth.tunnel(i) >= 0 ? tunnelTempTarget : 0;
             temp += (target - temp) * dt / 120.0;
 
+            // Rotate from car axes into phone axes through the (unknown to the estimators) holder orientation, and
+            // add the phone's own rotation while it is being moved in the holder.
             double[] mount = truth.mountAt(t);
             double[] fp = Rot.apply(mount, f);
             double[] wp = Rot.apply(mount, w);
@@ -71,6 +79,7 @@ public final class ImuModel {
             for (int k = 0; k < 3; k++) {
                 wp[k] += wRel[k];
             }
+            // Apply the sensor errors and store the sample.
             double[] am = acc.measure(fp, temp, dt);
             double[] gm = gyr.measure(wp, temp, dt);
             out.add(new ImuSample(t, am[0], am[1], am[2], gm[0], gm[1], gm[2]));
@@ -83,14 +92,17 @@ public final class ImuModel {
         int i0 = Math.max(0, i - 1), i1 = Math.min(tr.size() - 1, i + 1);
         double[] a = new double[3];
         if (i1 > i0) {
+            // Acceleration = change of the velocity vector between the neighbouring samples.
             double[] v0 = velocityNav(tr, i0), v1 = velocityNav(tr, i1);
             double span = tr.t(i1) - tr.t(i0);
             for (int k = 0; k < 3; k++) {
                 a[k] = (v1[k] - v0[k]) / span;
             }
         }
+        // An accelerometer at rest measures +g upwards (the reaction to gravity), so add g to the vertical.
         a[2] += MathUtil.G;
         double[] rnb = Rot.bodyToNav(tr.heading(i), tr.pitch(i), tr.roll(i));
+        // Express it in car axes (forward, left, up).
         return Rot.apply(Rot.transpose(rnb), a);
     }
 
@@ -102,6 +114,8 @@ public final class ImuModel {
         }
         double[] r0 = Rot.bodyToNav(tr.heading(i0), tr.pitch(i0), tr.roll(i0));
         double[] r1 = Rot.bodyToNav(tr.heading(i1), tr.pitch(i1), tr.roll(i1));
+        // Rotation from the previous to the next attitude; its small skew-symmetric part divided by the time span
+        // is the body angular rate.
         double[] rel = Rot.mul(Rot.transpose(r0), r1);
         double span = tr.t(i1) - tr.t(i0);
         return new double[]{
@@ -127,10 +141,12 @@ public final class ImuModel {
         for (int k = 0; k < 9; k++) {
             dm[k] = -(m1[k] - m0[k]) / dt;
         }
+        // [w]x = -dM/dt * M^T; read the angular rate out of the skew-symmetric matrix.
         double[] w = Rot.mul(dm, Rot.transpose(m));
         return new double[]{(w[7] - w[5]) / 2, (w[2] - w[6]) / 2, (w[3] - w[1]) / 2};
     }
 
+    /** Velocity vector in map axes (east, north, up) from speed, heading and road slope. */
     private static double[] velocityNav(TruthTrajectory tr, int i) {
         double g = Math.atan(tr.grade(i));
         double h = tr.heading(i);
@@ -143,6 +159,8 @@ public final class ImuModel {
         private final ImuConfig c;
         private final double quality;
         private final Rng rng;
+        // m = scale and cross-axis error matrix (close to identity); bias drifts; tempSign = direction of the
+        // temperature effect.
         private final double[] m = new double[9];
         private final double[] bias = new double[3];
         private final double[] tempSign = new double[3];
@@ -153,6 +171,7 @@ public final class ImuModel {
             this.rng = rng;
             for (int r = 0; r < 3; r++) {
                 for (int k = 0; k < 3; k++) {
+                    // Diagonal: 1 plus scale error; off-diagonal: small cross-coupling between axes.
                     m[3 * r + k] = r == k ? 1 + rng.gaussian(c.scaleSigma) : rng.gaussian(c.crossAxisSigma);
                 }
                 bias[r] = rng.gaussian(c.biasSigma * quality);
@@ -160,11 +179,17 @@ public final class ImuModel {
             }
         }
 
+        /**
+         * Turns a true reading into a measured one: scale/cross-axis, drifting bias, temperature, noise,
+         * rounding.
+         */
         double[] measure(double[] truth, double temp, double dt) {
             double[] out = Rot.apply(m, truth);
             for (int k = 0; k < 3; k++) {
+                // The bias performs a slow random walk.
                 bias[k] += rng.gaussian(c.biasWalk * quality * Math.sqrt(dt));
                 double val = out[k] + bias[k] + tempSign[k] * c.tempCoeff * temp + rng.gaussian(c.noise * quality);
+                // Round to the sensor's resolution (its least significant bit).
                 out[k] = c.quantization > 0 ? Math.round(val / c.quantization) * c.quantization : val;
             }
             return out;

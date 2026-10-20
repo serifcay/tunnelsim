@@ -36,10 +36,12 @@ public final class RoadNetwork {
         this.night = "night".equalsIgnoreCase(road.lighting);
     }
 
+    /** Builds the network from the scenario: the main road, one ramp per fork, tunnels, cell zones and beacons. */
     public static RoadNetwork build(ScenarioConfig cfg, Rng rng) {
         RoadConfig road = cfg.road;
         RoadNetwork net = new RoadNetwork(road);
         double startGrade = road.main.get(0).grade;
+        // The main road starts at the origin heading east.
         RoadGeometry main = RoadGeometry.build(new Pose(0, 0, 0, 0, 0, startGrade), road.main, road.gradeTransition);
 
         List<BranchConfig> branches = new ArrayList<>(road.branches);
@@ -53,6 +55,7 @@ public final class RoadNetwork {
             net.forks.add(b.at);
         }
         cuts.add(main.length());
+        // Each piece becomes an edge; piece i continues from piece i-1 (its parent in the tree).
         for (int i = 0; i + 1 < cuts.size(); i++) {
             double from = cuts.get(i), to = cuts.get(i + 1);
             int parent = i == 0 ? -1 : i - 1;
@@ -66,6 +69,7 @@ public final class RoadNetwork {
         for (int j = 0; j < branches.size(); j++) {
             BranchConfig b = branches.get(j);
             int parent = j; // main piece j ends at this fork
+            // A ramp starts at the fork with the main road's position, heading, curvature and grade there.
             Pose p = main.pose(b.at);
             RoadGeometry g = RoadGeometry.build(p, b.ramp, road.gradeTransition);
             int id = net.edges.size();
@@ -81,16 +85,20 @@ public final class RoadNetwork {
                 if (e.ramp) {
                     continue;
                 }
+                // Part of the tunnel that lies on this main-road edge, in the edge's own coordinates.
                 double from = Math.max(tc.from, e.pathStart) - e.pathStart;
                 double to = Math.min(tc.to, e.pathStart + e.length) - e.pathStart;
                 if (to > from) {
                     e.tunnelIntervals.add(new double[]{from, to, t});
                 }
             }
+            // The tunnel's mouths: entry and exit on the main road.
             net.addPortal(t, net.positionOnMain(tc.from), true);
             net.addPortal(t, net.positionOnMain(tc.to), false);
             for (int j = 0; j < branches.size(); j++) {
                 BranchConfig b = branches.get(j);
+                // A fork inside the tunnel: the ramp stays in the tunnel for its first tunnelUntil metres and has
+                // its own exit portal.
                 if (b.at > tc.from && b.at < tc.to && b.tunnelUntil > 0) {
                     Edge ramp = net.edges.get(net.forks.size() + 1 + j);
                     double until = Math.min(b.tunnelUntil, ramp.length);
@@ -114,6 +122,8 @@ public final class RoadNetwork {
         int id = 1;
         for (TunnelConfig t : tunnels) {
             List<Double> at = new ArrayList<>();
+            // In-tunnel coverage: a handover just inside the entry, one every handoverSpacing metres, and one just
+            // after the exit.
             at.add(t.from + 50);
             for (double s = t.from + cc.handoverSpacing; s < t.to - cc.handoverSpacing / 3; s += cc.handoverSpacing) {
                 at.add(s);
@@ -131,6 +141,7 @@ public final class RoadNetwork {
         int id = 1;
         for (Edge e : edges) {
             for (double[] iv : e.tunnelIntervals) {
+                // Beacons at regular spacing through every tunnel section, half a spacing in from its start.
                 for (double s = iv[0] + bc.spacing / 2; s < iv[1]; s += bc.spacing) {
                     Pose p = e.pose(s);
                     // Mounted on the right-hand wall.
@@ -138,6 +149,7 @@ public final class RoadNetwork {
                     double x = p.x() + bc.lateralOffset * nx;
                     double y = p.y() + bc.lateralOffset * ny;
                     beacons.add(new Beacon(id++, x, y, p.z() + bc.height,
+                            // The surveyed position differs a little from the true one; some beacons are dead.
                             x + rng.gaussian(bc.positionError), y + rng.gaussian(bc.positionError),
                             rng.chance(bc.failedFraction)));
                 }
@@ -159,6 +171,7 @@ public final class RoadNetwork {
         return forks;
     }
 
+    /** Total length of the main road (follow the first child at every fork to its end). */
     public double mainLength() {
         Edge e = edges.get(0);
         while (!e.isLeaf()) {
@@ -176,6 +189,7 @@ public final class RoadNetwork {
         return e.id;
     }
 
+    /** All leaf edges, i.e. every possible destination (main road end and each ramp). */
     public List<Integer> leaves() {
         return edges.stream().filter(Edge::isLeaf).map(e -> e.id).toList();
     }
@@ -187,6 +201,7 @@ public final class RoadNetwork {
             if (e == a) {
                 return true;
             }
+            // Walk from b back towards the start; if we meet a on the way, a is on b's path.
             e = edges.get(e).parent;
         }
         return false;
@@ -197,6 +212,7 @@ public final class RoadNetwork {
         return isAncestorOrSelf(a, b) || isAncestorOrSelf(b, a);
     }
 
+    /** Distance from the start of the network to this position, along the path that reaches it. */
     public double pathOffset(MapPosition p) {
         return edges.get(p.edge()).pathStart + p.s();
     }
@@ -206,6 +222,7 @@ public final class RoadNetwork {
         int e = leaf;
         while (e >= 0) {
             Edge edge = edges.get(e);
+            // Walk back from the leaf towards the start until the edge that contains the offset.
             if (offset >= edge.pathStart || edge.parent < 0) {
                 return new MapPosition(e, Math.max(0, Math.min(edge.length, offset - edge.pathStart)));
             }
@@ -214,6 +231,7 @@ public final class RoadNetwork {
         throw new IllegalStateException();
     }
 
+    /** Position at a distance along the main road. */
     public MapPosition positionOnMain(double offset) {
         return positionOnPath(mainLeaf(), offset);
     }
@@ -239,9 +257,11 @@ public final class RoadNetwork {
      */
     public PathError error(MapPosition estimate, MapPosition truth) {
         double oe = pathOffset(estimate), ot = pathOffset(truth);
+        // Same path: simply the difference of the two distances from the start.
         if (onCommonPath(estimate.edge(), truth.edge())) {
             return new PathError(oe - ot, false);
         }
+        // Different branches: back from the estimate to the fork, then forward to the car.
         double fork = forkBetween(estimate.edge(), truth.edge());
         return new PathError((oe - fork) + (ot - fork), true);
     }
@@ -249,6 +269,7 @@ public final class RoadNetwork {
     /** Path offset where the paths to two edges split. */
     public double forkBetween(int a, int b) {
         int e = a;
+        // Walk up from a until reaching an edge that also leads to b; its end is the fork.
         while (e >= 0 && !isAncestorOrSelf(e, b)) {
             e = edges.get(e).parent;
         }
@@ -256,11 +277,13 @@ public final class RoadNetwork {
         return common.pathStart + common.length;
     }
 
+    /** Along-road error and whether the estimate is on a different branch than the car. */
     public record PathError(double meters, boolean wrongBranch) {
     }
 
     // ---- Geometry lookups ----
 
+    /** Road geometry at a map position. */
     public Pose pose(MapPosition p) {
         return edges.get(p.edge()).pose(p.s());
     }
@@ -316,6 +339,7 @@ public final class RoadNetwork {
         return tunnelAt(p.edge(), p.s());
     }
 
+    /** Index of the tunnel containing (edge, s), or -1. */
     public int tunnelAt(int edge, double s) {
         for (double[] iv : edges.get(edge).tunnelIntervals) {
             if (s >= iv[0] && s <= iv[1]) {
@@ -348,6 +372,7 @@ public final class RoadNetwork {
             return 0;
         }
         Pose pose = pose(p);
+        // Within the degraded zone around any portal, quality falls linearly from 1 to 0.2 at the mouth.
         double q = 1;
         for (Portal portal : portals) {
             double zone = tunnels.get(portal.tunnel()).gnssDegradedZone;
@@ -362,6 +387,7 @@ public final class RoadNetwork {
     /** Speed the navigation app expects at a position: live traffic if reported, else the limit. */
     public double expectedSpeed(MapPosition p) {
         Edge e = edges.get(p.edge());
+        // Reported traffic zones are defined along the main road.
         if (!e.ramp) {
             double off = pathOffset(p);
             for (TrafficZoneConfig z : traffic) {

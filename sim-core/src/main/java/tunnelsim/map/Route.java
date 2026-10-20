@@ -13,6 +13,8 @@ public final class Route {
         this.network = network;
         int e = 0;
         double maneuver = Double.NaN;
+        // Walk from the start: at each fork, take the ramp if the scenario says the route takes this branch. The
+        // first ramp taken is the maneuver the callouts are for.
         while (!network.edge(e).isLeaf()) {
             Edge edge = network.edge(e);
             double forkAt = edge.pathStart + edge.length;
@@ -30,6 +32,7 @@ public final class Route {
         return leaf;
     }
 
+    /** True if the route takes an exit (there is something to announce). */
     public boolean hasManeuver() {
         return !Double.isNaN(maneuverOffset);
     }
@@ -38,6 +41,7 @@ public final class Route {
         return maneuverOffset;
     }
 
+    /** True if the edge lies on the planned route. */
     public boolean contains(int edge) {
         return network.isAncestorOrSelf(edge, leaf);
     }

@@ -39,6 +39,7 @@ public final class RoadGeometry {
      */
     public static RoadGeometry build(Pose start, List<SegmentConfig> segments, double gradeTransition) {
         double total = segments.stream().mapToDouble(s -> s.length).sum();
+        // One sample every DS (0.5 m) along the whole road.
         int n = (int) Math.round(total / DS) + 1;
         double[] k = new double[n];
         double[] rawGrade = new double[n];
@@ -50,12 +51,16 @@ public final class RoadGeometry {
         for (SegmentConfig seg : segments) {
             double sEnd = sStart + seg.length;
             double kStart = kPrev;
+            // Curvature at the end of this segment: 0 for a straight, constant for an arc, the given end value for
+            // a clothoid.
             double kEnd = switch (seg.type) {
                 case "straight" -> 0;
                 case "arc" -> seg.curvature != null ? seg.curvature : 1.0 / seg.radius;
                 case "clothoid" -> seg.curvatureEnd;
                 default -> throw new IllegalArgumentException("Unknown segment type " + seg.type);
             };
+            // Fill the samples inside this segment. A clothoid's curvature changes linearly from its start value
+            // to its end value, which is how real roads ease into and out of curves.
             while (idx < n && idx * DS <= sEnd + 1e-9) {
                 double s = idx * DS;
                 double f = (s - sStart) / seg.length;
@@ -69,11 +74,13 @@ public final class RoadGeometry {
             kPrev = kEnd;
             sStart = sEnd;
         }
+        // Rounding can leave a last sample or two: continue the last segment's values.
         for (; idx < n; idx++) {
             k[idx] = kPrev;
             rawGrade[idx] = rawGrade[Math.max(0, idx - 1)];
         }
 
+        // Turn sudden grade changes into gradual vertical curves.
         double[] g = smooth(rawGrade, (int) Math.max(1, Math.round(gradeTransition / DS)), start.grade());
 
         double[] x = new double[n];
@@ -84,6 +91,7 @@ public final class RoadGeometry {
         y[0] = start.y();
         z[0] = start.z();
         h[0] = start.heading();
+        // Integrate along the road: heading from curvature, x/y from heading, elevation from grade.
         for (int i = 1; i < n; i++) {
             // Midpoint integration of heading and position.
             h[i] = h[i - 1] + 0.5 * (k[i - 1] + k[i]) * DS;
@@ -114,6 +122,7 @@ public final class RoadGeometry {
         return length;
     }
 
+    /** Everything about the road at distance s, interpolated linearly between the two nearest samples. */
     public Pose pose(double s) {
         double f = clampIndex(s);
         int i = (int) f;
@@ -159,6 +168,7 @@ public final class RoadGeometry {
      * Returns {s, distance}.
      */
     public double[] nearest(double px, double py, double sFrom, double sTo) {
+        // First find the closest sample point (brute force over the search range).
         int i0 = (int) Math.max(0, Math.floor(sFrom / DS));
         int i1 = (int) Math.min(x.length - 1, Math.ceil(sTo / DS));
         int best = i0;
@@ -188,10 +198,12 @@ public final class RoadGeometry {
         return new double[]{bestS, bestDist};
     }
 
+    /** Fractional sample index for distance s, kept inside the road. */
     private double clampIndex(double s) {
         return Math.max(0, Math.min(x.length - 1, s / DS));
     }
 
+    /** Linear interpolation between samples i and j (t from 0 to 1). */
     private static double lerp(double[] a, int i, int j, double t) {
         return a[i] + (a[j] - a[i]) * t;
     }

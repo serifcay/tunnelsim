@@ -19,6 +19,7 @@ final class Palette {
     private Palette() {
     }
 
+    /** Colour of each estimator (orange A, purple B, blue C, green D, teal D+E). */
     static Color estimator(String id) {
         return switch (id) {
             case "A" -> Color.web("#e07a1f");
@@ -30,6 +31,7 @@ final class Palette {
         };
     }
 
+    /** The same colour with a given opacity (0 transparent, 1 opaque). */
     static Color withAlpha(Color c, double a) {
         return new Color(c.getRed(), c.getGreen(), c.getBlue(), a);
     }

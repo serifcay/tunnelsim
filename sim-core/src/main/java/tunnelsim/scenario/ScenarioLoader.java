@@ -13,7 +13,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
+/** Reads, writes, copies and validates scenario files (YAML). */
 public final class ScenarioLoader {
+    // Unknown keys are errors, so a typo in a scenario file is reported instead of silently ignored. A single
+    // value is accepted where a list is expected.
     private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
             .configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true);
@@ -21,6 +24,7 @@ public final class ScenarioLoader {
     private ScenarioLoader() {
     }
 
+    /** Loads and validates a scenario file. */
     public static ScenarioConfig load(Path file) {
         try {
             return validate(YAML.readValue(file.toFile(), ScenarioConfig.class));
@@ -37,6 +41,7 @@ public final class ScenarioLoader {
         }
     }
 
+    /** Parses and validates scenario text (used by the YAML editor in the app). */
     public static ScenarioConfig parse(String yaml) {
         try {
             return validate(YAML.readValue(yaml, ScenarioConfig.class));
@@ -45,6 +50,7 @@ public final class ScenarioLoader {
         }
     }
 
+    /** Turns a scenario back into YAML text. */
     public static String toYaml(ScenarioConfig config) {
         try {
             return YAML.writeValueAsString(config);
@@ -70,6 +76,7 @@ public final class ScenarioLoader {
         }
     }
 
+    /** Checks a scenario for mistakes and throws one exception listing all of them. */
     public static ScenarioConfig validate(ScenarioConfig c) {
         List<String> errors = new ArrayList<>();
         if (c.road.main.isEmpty()) {

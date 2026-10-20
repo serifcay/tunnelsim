@@ -16,6 +16,7 @@ public final class Rng {
 
     /** Derives an independent stream from a master seed and a component name. */
     public static Rng derive(long masterSeed, String name) {
+        // Hash the master seed together with the name (SplitMix64 mixing), so each name gives an unrelated stream.
         long h = masterSeed ^ 0x9E3779B97F4A7C15L;
         for (int i = 0; i < name.length(); i++) {
             h = mix(h + name.charAt(i));
@@ -23,6 +24,7 @@ public final class Rng {
         return new Rng(mix(h));
     }
 
+    /** SplitMix64 bit mixer: spreads every input bit over the whole output. */
     private static long mix(long z) {
         z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
         z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
@@ -33,6 +35,7 @@ public final class Rng {
         return random.nextGaussian();
     }
 
+    /** Normal random number with mean 0 and the given standard deviation. */
     public double gaussian(double sigma) {
         return sigma * random.nextGaussian();
     }

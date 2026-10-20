@@ -35,6 +35,7 @@ final class ParameterPanel extends VBox {
     private boolean loading;
     private final List<Runnable> loaders = new ArrayList<>();
     // Base IMU values for the quality multiplier.
+    // The scenario's own IMU noise and bias values; the "IMU quality" slider multiplies them.
     private double baseAccNoise, baseAccBias, baseGyroNoise, baseGyroBias;
 
     ParameterPanel(Runnable onChange) {
@@ -56,6 +57,7 @@ final class ParameterPanel extends VBox {
         loading = false;
     }
 
+    /** A control changed the scenario: re-run (ignored while load() fills in the controls). */
     private void changed() {
         if (!loading && cfg != null) {
             onChange.run();
@@ -64,6 +66,7 @@ final class ParameterPanel extends VBox {
 
     // ---- Sections -------------------------------------------------------------------------
 
+    /** Seed, device profile, day/night and option E (BLE, OBD). */
     private TitledPane scenarioSection() {
         GridPane g = grid();
         int r = 0;
@@ -103,6 +106,7 @@ final class ParameterPanel extends VBox {
         return section("Scenario", g);
     }
 
+    /** Tunnel length, driver speed, route following, and buttons that add traffic events or a phone shift. */
     private TitledPane drivingSection() {
         GridPane g = grid();
         int r = 0;
@@ -144,6 +148,7 @@ final class ParameterPanel extends VBox {
         return section("Tunnel and driving (car 1)", g);
     }
 
+    /** IMU quality, GNSS reacquisition delay, barometer on/off, BLE beacon spacing and failures. */
     private TitledPane sensorSection() {
         GridPane g = grid();
         int r = 0;
@@ -163,6 +168,7 @@ final class ParameterPanel extends VBox {
         return section("Phone sensors", g);
     }
 
+    /** Particle count, alignment mode, callout policy and an on/off switch for each aiding source. */
     private TitledPane estimatorSection() {
         GridPane g = grid();
         int r = 0;
@@ -194,6 +200,7 @@ final class ParameterPanel extends VBox {
         return cfg.cars.get(0);
     }
 
+    /** Sets tunnel 1's length; lengthens the road if needed and moves later tunnels so nothing overlaps. */
     private void setTunnelLength(double length) {
         TunnelConfig t = firstTunnel();
         if (t == null) {
@@ -224,6 +231,7 @@ final class ParameterPanel extends VBox {
         }
     }
 
+    /** Adds a scripted event for car 1 in the middle of tunnel 1. */
     private void addEvent(String type, Consumer<EventConfig> setup) {
         TunnelConfig t = firstTunnel();
         EventConfig e = new EventConfig();
@@ -234,6 +242,7 @@ final class ParameterPanel extends VBox {
         changed();
     }
 
+    /** Makes sure an estimator is computed (e.g. D+E once BLE or OBD is switched on). */
     private void ensureEstimator(String id, boolean present) {
         if (present && !cfg.estimators.contains(id)) {
             cfg.estimators.add(id);
@@ -253,6 +262,7 @@ final class ParameterPanel extends VBox {
         return p;
     }
 
+    /** Adds a labelled slider bound to one scenario value; it applies when the user releases it. */
     private int slider(GridPane g, int row, String name, String format, double min, double max,
                        java.util.function.DoubleSupplier get, DoubleConsumer set) {
         Slider s = new Slider(min, max, min);
@@ -260,6 +270,8 @@ final class ParameterPanel extends VBox {
         value.setMinWidth(62);
         s.setPrefWidth(130);
         GridPane.setHgrow(s, Priority.ALWAYS);
+        // Show the value live while dragging, but only apply it (and re-run) once the drag ends or after a click
+        // on the track.
         s.valueProperty().addListener(o -> value.setText(String.format(Locale.ROOT, format, s.getValue())));
         s.valueChangingProperty().addListener((o, was, now) -> {
             if (!now) {
@@ -273,6 +285,7 @@ final class ParameterPanel extends VBox {
                 changed();
             }
         });
+        // When a scenario is loaded, move the slider to its value.
         loaders.add(() -> {
             s.setValue(Math.max(min, Math.min(max, get.getAsDouble())));
             value.setText(String.format(Locale.ROOT, format, s.getValue()));
@@ -281,6 +294,7 @@ final class ParameterPanel extends VBox {
         return row + 1;
     }
 
+    /** A checkbox bound to one scenario switch. */
     private CheckBox check(String name, java.util.function.BooleanSupplier get, Consumer<Boolean> set) {
         CheckBox c = new CheckBox(name);
         c.selectedProperty().addListener((o, was, now) -> {
@@ -293,6 +307,7 @@ final class ParameterPanel extends VBox {
         return c;
     }
 
+    /** A drop-down bound to one scenario setting. */
     private ComboBox<String> combo(List<String> values, java.util.function.Supplier<String> get, Consumer<String> set) {
         ComboBox<String> c = new ComboBox<>();
         c.getItems().addAll(values);

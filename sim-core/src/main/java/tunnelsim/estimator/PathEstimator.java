@@ -11,6 +11,7 @@ import tunnelsim.util.MathUtil;
  * GNSS fixes clearly put the car on another branch.
  */
 abstract class PathEstimator implements Estimator {
+    // A fix more than this far from our path [m] means the car is probably on another branch.
     private static final double SWITCH_DISTANCE = 30;
 
     protected final EstimatorContext ctx;
@@ -31,10 +32,12 @@ abstract class PathEstimator implements Estimator {
      * Returns {offset on the (possibly new) path, distance from the road}, or null if far from any road.
      */
     protected double[] matchFix(GnssFix fix) {
+        // Normal case: the fix lies close to the path we are on; return its offset along it.
         double[] onPath = net.nearestOnPath(leaf, fix.x(), fix.y());
         if (onPath[2] < SWITCH_DISTANCE) {
             return new double[]{net.edge((int) onPath[0]).pathStart + onPath[1], onPath[2]};
         }
+        // Otherwise look at the whole network: if the fix is near another road, switch to that path.
         double[] any = net.nearest(fix.x(), fix.y());
         if (any[2] > 2 * SWITCH_DISTANCE) {
             return null;
@@ -49,18 +52,22 @@ abstract class PathEstimator implements Estimator {
     protected void onPathSwitched() {
     }
 
+    /** Edge and position on that edge for a path offset on the current path. */
     protected MapPosition position(double offset) {
         return net.positionOnPath(leaf, offset);
     }
 
+    /** Keeps an offset between the start and the end of the current path. */
     protected double clampOffset(double offset) {
         return MathUtil.clamp(offset, 0, net.pathEnd(leaf));
     }
 
+    /** Single hypothesis: either fully on the planned route (0) or fully off it (1). */
     protected double pOffRoute() {
         return ctx.route().contains(leaf) ? 0 : 1;
     }
 
+    /** Packs offset, uncertainty and speed into an Estimate (invalid before the first GNSS fix). */
     protected Estimate build(double offset, double sigma, double speed, double sigmaSpeed) {
         if (!initialised) {
             return Estimate.invalid(t);
@@ -79,10 +86,12 @@ abstract class PathEstimator implements Estimator {
             // Off the route: the maneuver was passed only if the estimate left the route at its fork.
             return net.forkBetween(leaf, ctx.route().leaf()) >= targetOffset - 1 ? 1 : 0;
         }
+        // Normal distribution: chance that the remaining distance is at most d, given mean and sigma.
         double remaining = targetOffset - offset;
         return MathUtil.normalCdf((d - remaining) / Math.max(sigma, 0.1));
     }
 
+    // A single path is either consistent with the branch (1) or not (0).
     @Override
     public double probOnSubtree(int edge) {
         return net.isAncestorOrSelf(edge, leaf) || net.isAncestorOrSelf(leaf, edge) ? 1 : 0;

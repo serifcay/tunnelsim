@@ -40,6 +40,7 @@ final class Studies {
         this.out = out;
     }
 
+    /** Same estimator colours as the app, so figures and screen look alike. */
     static Color color(String id) {
         return switch (id) {
             case "A" -> new Color(0xe0, 0x7a, 0x1f);
@@ -74,6 +75,9 @@ final class Studies {
                 for (MonteCarlo.Summary s : r.summaries().values()) {
                     List<Double> x = new ArrayList<>(), p50 = new ArrayList<>(), p95 = new ArrayList<>();
                     for (double[] b : s.errorCurve()) {
+                        // Each bin is [time, median error, 95th percentile, number of runs still in the tunnel].
+                        // Only plot times that at least half the runs reached, otherwise the tail is noise from a
+                        // few long runs. Errors are clamped at 0.1 m so the log scale works.
                         if (b[3] >= runs / 2.0) {
                             x.add(b[0]);
                             p50.add(Math.max(0.1, b[1]));
@@ -83,6 +87,7 @@ final class Studies {
                     if (x.size() < 2) {
                         continue;
                     }
+                    // Solid line for the median, dashed line for the 95th percentile, in the estimator's colour.
                     XYSeries a = chart.addSeries(s.estimator() + " median", x, p50);
                     a.setLineColor(color(s.estimator()));
                     a.setMarker(SeriesMarkers.NONE);
@@ -99,6 +104,7 @@ final class Studies {
     /** Contribution of each aiding source to the particle filter. */
     void ablation(List<Path> scenarios) {
         Path dir = dir("ablation");
+        // Each variant switches off one aiding source (or turns on an optional one) and is compared with "all".
         Map<String, Consumer<ScenarioConfig>> variants = new LinkedHashMap<>();
         variants.put("all", c -> { });
         variants.put("no curvature", c -> c.estimator.aiding.curvature = false);
@@ -121,6 +127,8 @@ final class Studies {
                 List<Number> values = new ArrayList<>();
                 ScenarioConfig base = ScenarioLoader.load(file);
                 for (Map.Entry<String, Consumer<ScenarioConfig>> v : variants.entrySet()) {
+                    // Fresh copy per variant so changes don't leak into the next one; only the particle filter is
+                    // run.
                     ScenarioConfig cfg = ScenarioLoader.copy(base);
                     cfg.estimators = new ArrayList<>(List.of("D"));
                     v.getValue().accept(cfg);
@@ -147,6 +155,8 @@ final class Studies {
         style(chart);
         chart.getStyler().setYAxisLogarithmic(true);
         try (PrintWriter csv = csv(dir.resolve("length.csv"), "road,estimator,length,exit_p50,exit_p95,max_p50,max_p95")) {
+            // Sweep tunnel length from 500 m to 5 km in 500 m steps, on a road with no features and on one full of
+            // curves and slopes.
             for (String road : List.of("straight-flat", "curvy-hilly")) {
                 Map<String, List<Double>> x = new LinkedHashMap<>(), y = new LinkedHashMap<>();
                 for (double len = 500; len <= 5000; len += 500) {
@@ -166,6 +176,7 @@ final class Studies {
                     XYSeries s = chart.addSeries(est + " " + road, x.get(est), y.get(est));
                     s.setLineColor(color(est));
                     s.setMarkerColor(color(est));
+                    // Dashed lines for the featureless road, solid for the curvy, hilly one.
                     if (road.equals("straight-flat")) {
                         s.setLineStyle(SeriesLines.DASH_DASH);
                     }
@@ -180,6 +191,8 @@ final class Studies {
         Path dir = dir("devices");
         try (PrintWriter csv = csv(dir.resolve("devices.csv"), "scenario,device,rms_p50,rms_p95,max_p95,exit_p50,callout_p50,within2sigma")) {
             for (Path file : scenarios) {
+                // Same scenario on each phone profile (iOS apps get no light sensor or cell info, the budget phone
+                // has no barometer and a noisier IMU).
                 for (String device : List.of("GENERIC", "IOS", "LOW_END")) {
                     ScenarioConfig cfg = ScenarioLoader.load(file);
                     cfg.device = device;
@@ -198,6 +211,7 @@ final class Studies {
     void particles(Path scenario) {
         Path dir = dir("particles");
         try (PrintWriter csv = csv(dir.resolve("particles.csv"), "particles,rms_p50,rms_p95,max_p95,within2sigma,runtime_ms")) {
+            // More particles cost more CPU; this shows where accuracy stops improving.
             for (int n : List.of(100, 300, 1000, 3000)) {
                 ScenarioConfig cfg = ScenarioLoader.load(scenario);
                 cfg.estimators = new ArrayList<>(List.of("D"));
@@ -218,6 +232,8 @@ final class Studies {
         c.seed = 100 + (long) length;
         c.estimators = new ArrayList<>(List.of("A", "C", "D"));
         c.road.main.add(segment("straight", 1200, null, 0, 0));
+        // Repeat a 600 m block (ease into a bend, hold it, ease out, then a straight), alternating left/right
+        // bends and going down for two blocks, then up for two, at 3% grade.
         if (type.equals("curvy-hilly")) {
             double done = 0;
             int k = 0;
@@ -239,10 +255,12 @@ final class Studies {
         t.from = 1200;
         t.to = 1200 + length;
         c.road.tunnels.add(t);
+        // Enough time to drive the whole road at about 15 m/s, plus a minute of slack.
         c.duration = (2200 + length) / 15 + 60;
         return ScenarioLoader.validate(c);
     }
 
+    /** One road segment; curvature is in 1/m (positive turns left), grade is rise over run. */
     private static SegmentConfig segment(String type, double length, Double curvature, double curvatureEnd, double grade) {
         SegmentConfig s = new SegmentConfig();
         s.type = type;
@@ -253,6 +271,7 @@ final class Studies {
         return s;
     }
 
+    /** Shared look for line charts. */
     private static void style(XYChart chart) {
         chart.getStyler().setLegendPosition(Styler.LegendPosition.InsideNW);
         chart.getStyler().setChartBackgroundColor(Color.WHITE);
@@ -260,12 +279,14 @@ final class Studies {
         chart.getStyler().setMarkerSize(5);
     }
 
+    /** Shared look for bar charts; labels are tilted so long variant names fit. */
     private static void style(CategoryChart chart) {
         chart.getStyler().setLegendPosition(Styler.LegendPosition.InsideNE);
         chart.getStyler().setChartBackgroundColor(Color.WHITE);
         chart.getStyler().setXAxisLabelRotation(20);
     }
 
+    /** Creates results/<study> (and docs/figures) and returns the study folder. */
     private Path dir(String study) {
         Path d = out.resolve(study);
         try {
@@ -277,6 +298,7 @@ final class Studies {
         return d;
     }
 
+    /** Saves the chart as PNG in the study folder and copies it into docs/figures for the write-up. */
     private void save(Object chart, Path dir, String name) {
         try {
             Path file = dir.resolve(name);
@@ -291,6 +313,7 @@ final class Studies {
         }
     }
 
+    /** Opens a CSV file and writes its header row. */
     private static PrintWriter csv(Path file, String header) {
         try {
             PrintWriter w = new PrintWriter(Files.newBufferedWriter(file));
@@ -301,6 +324,7 @@ final class Studies {
         }
     }
 
+    /** File name without the .yaml extension, used to name figures. */
     private static String slug(Path file) {
         return file.getFileName().toString().replace(".yaml", "");
     }

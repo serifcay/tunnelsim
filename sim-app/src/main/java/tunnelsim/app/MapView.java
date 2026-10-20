@@ -28,6 +28,7 @@ import java.util.Locale;
 final class MapView extends CanvasPane {
     private static final Color CALLOUT = Color.web("#b5532a");
     private final AppState state;
+    // View: world point shown at the centre (cx, cy) and zoom (pixels per metre).
     private double cx, cy, scale = 1;
     private boolean follow = true;
     private double dragX, dragY;
@@ -35,6 +36,7 @@ final class MapView extends CanvasPane {
 
     MapView(AppState state) {
         this.state = state;
+        // Scroll wheel zooms around the mouse pointer (or around the car when following).
         setOnScroll(e -> {
             double f = Math.pow(1.0015, e.getDeltaY());
             double wx = toWorldX(e.getX()), wy = toWorldY(e.getY());
@@ -49,6 +51,7 @@ final class MapView extends CanvasPane {
             dragX = e.getX();
             dragY = e.getY();
         });
+        // Dragging pans the map and stops following the car.
         setOnMouseDragged(e -> {
             follow = false;
             cx -= (e.getX() - dragX) / scale;
@@ -57,6 +60,7 @@ final class MapView extends CanvasPane {
             dragY = e.getY();
             redraw();
         });
+        // Double-click toggles between following the car and the overview of the whole network.
         setOnMouseClicked(e -> {
             if (e.getClickCount() == 2) {
                 follow = !follow;
@@ -68,6 +72,7 @@ final class MapView extends CanvasPane {
         });
     }
 
+    /** A new run arrived: cache its GNSS fixes for drawing. */
     void resultChanged() {
         CarResult car = state.car();
         fixes = car == null ? List.of() : car.log.of(GnssFix.class);
@@ -93,6 +98,7 @@ final class MapView extends CanvasPane {
         redraw();
     }
 
+    /** Zooms and centres so the whole road network fits in the view. */
     void fitAll() {
         if (state.result == null) {
             return;
@@ -111,10 +117,12 @@ final class MapView extends CanvasPane {
         scale = Math.min(w() / Math.max(1, maxX - minX), h() / Math.max(1, maxY - minY)) * 0.9;
     }
 
+    /** World x [m] to screen x [px]. */
     private double sx(double x) {
         return w() / 2 + (x - cx) * scale;
     }
 
+    /** World y [m] to screen y [px] (screen y grows downwards, so it is flipped). */
     private double sy(double y) {
         return h() / 2 - (y - cy) * scale;
     }
@@ -127,6 +135,7 @@ final class MapView extends CanvasPane {
         return cy - (py - h() / 2) / scale;
     }
 
+    /** Draws the whole map for the current time: roads, tunnels, features, fixes, estimates, callouts, car. */
     @Override
     void redraw() {
         GraphicsContext g = g();
@@ -142,6 +151,7 @@ final class MapView extends CanvasPane {
         TruthTrajectory truth = car.truth;
         int ti = truth.indexAt(state.time);
         if (follow) {
+            // Following: keep the true car in the centre.
             cx = truth.x(ti);
             cy = truth.y(ti);
         }
@@ -220,6 +230,7 @@ final class MapView extends CanvasPane {
             }
             Estimate e = s.estimate();
             Color c = Palette.estimator(id);
+            // The particle cloud (a thinned-out copy) as small translucent dots.
             if (state.showParticles && e.particles() != null) {
                 g.setFill(Palette.withAlpha(c, 0.35));
                 Estimate.ParticleSnapshot ps = e.particles();
@@ -251,6 +262,7 @@ final class MapView extends CanvasPane {
                 }
                 g.stroke();
             }
+            // The estimate itself: a diamond in the estimator's colour, with its id.
             Edge ee = net.edge(e.edge());
             double ex = sx(ee.x(e.s())), ey = sy(ee.y(e.s()));
             g.setFill(c);
@@ -261,6 +273,7 @@ final class MapView extends CanvasPane {
             g.setFill(c);
             g.setFont(Font.font("System", 11));
             g.fillText(id, ex + 9, ey - 6);
+            // Optional: the smoothed marker the driver would see, as a ring.
             if (state.showDisplayMarker && s.displayLeaf() >= 0) {
                 MapPosition dp = net.positionOnPath(s.displayLeaf(), s.displayOffset());
                 Edge de = net.edge(dp.edge());
@@ -421,6 +434,7 @@ final class MapView extends CanvasPane {
         g.strokeArc(x - 0.2 * s, y - 0.7 * s, 1.2 * s, 1.4 * s, -50, 100, javafx.scene.shape.ArcType.OPEN);
     }
 
+    /** Draws part of an edge (from..to metres) as a polyline, sampled finer when zoomed in. */
     private void strokeEdge(GraphicsContext g, Edge e, double from, double to, Color c, double width) {
         g.setStroke(c);
         g.setLineWidth(width);
@@ -443,6 +457,7 @@ final class MapView extends CanvasPane {
         g.stroke();
     }
 
+    /** A car as a triangle pointing in its direction of travel. */
     private void drawCar(GraphicsContext g, double x, double y, double heading, Color c, double size) {
         double px = sx(x), py = sy(y);
         double len = 11 * size, wid = 6 * size;
@@ -456,6 +471,7 @@ final class MapView extends CanvasPane {
         g.strokePolygon(xs, ys, 3);
     }
 
+    /** Text overlay (car, time, speed, where it is) and the scale bar. */
     private void drawOverlay(GraphicsContext g, CarResult car, int ti) {
         TruthTrajectory truth = car.truth;
         RoadNetwork net = state.result.net();
@@ -496,6 +512,7 @@ final class MapView extends CanvasPane {
         g.setTextBaseline(VPos.BASELINE);
     }
 
+    /** Rounds a length to 1, 2 or 5 times a power of ten, for the scale bar. */
     private static double niceLength(double m) {
         double p = Math.pow(10, Math.floor(Math.log10(m)));
         double f = m / p;

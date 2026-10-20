@@ -14,10 +14,12 @@ public record EstimatorContext(RoadNetwork net, Route route, ScenarioConfig scen
         return config.aiding;
     }
 
+    /** BLE is used only by the option-E estimator, when the scenario has beacons and the aiding is on. */
     public boolean useBle() {
         return optionE && scenario.options.ble && config.aiding.ble;
     }
 
+    /** OBD speed is used only by the option-E estimator, when the scenario has it and the aiding is on. */
     public boolean useObd() {
         return optionE && scenario.options.obd && config.aiding.obd;
     }

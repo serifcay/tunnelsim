@@ -23,10 +23,13 @@ public final class BaroModel {
         this.rng = rng;
     }
 
+    /** Produces the run's pressure samples (25 Hz) from the true altitude plus the error sources. */
     public List<BaroSample> generate(TruthTrajectory truth) {
         List<BaroSample> out = new ArrayList<>();
         double period = 1.0 / c.rate;
+        // Unknown absolute offset from the weather (+-15 hPa): the barometer only measures altitude changes well.
         double weather = rng.uniform(-1500, 1500);
+        // Slow pressure fluctuation inside tunnels from air pushed by traffic ("piston effect").
         GaussMarkov piston = new GaussMarkov(c.tunnelSigma, c.tunnelTau, rng);
         double step = 0;
         double spikeUntil = -1, spike = 0;
@@ -34,17 +37,21 @@ public final class BaroModel {
         for (double t = 0; t <= truth.duration(); t += period) {
             int i = truth.indexAt(t);
             int tun = truth.tunnel(i);
+            // Entering a tunnel causes a pressure step that then fades away.
             if (tun >= 0 && prevTunnel < 0) {
                 step = rng.uniform(-c.entryStep, c.entryStep);
             }
             prevTunnel = tun;
             step *= Math.exp(-period / c.tunnelTau);
+            // Weather drifts slowly.
             weather += rng.gaussian(c.drift * Math.sqrt(period));
             double p = piston.step(period);
+            // Now and then a short spike: the car's ventilation or a window opening.
             if (t > spikeUntil && rng.chance(c.spikeRate * period)) {
                 spikeUntil = t + rng.uniform(2, 5);
                 spike = (rng.chance(0.5) ? 1 : -1) * c.spikeMagnitude * rng.uniform(0.5, 1.0);
             }
+            // Pressure at the phone's height (1.2 m above the road) plus all disturbances and sensor noise.
             double pressure = MathUtil.altitudeToPressure(truth.z(i) + 1.2)
                     + weather
                     + (tun >= 0 ? p : 0) + step

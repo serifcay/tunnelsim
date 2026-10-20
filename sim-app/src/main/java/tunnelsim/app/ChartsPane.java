@@ -53,12 +53,14 @@ final class ChartsPane extends TabPane {
         getTabs().add(new Tab(name, chart));
     }
 
+    /** Applies the chosen time window to every chart. */
     void setWindow(boolean fullRun, double halfWidth) {
         full = fullRun;
         half = halfWidth;
         charts.forEach(c -> c.setWindow(full, half));
     }
 
+    /** Moves the playhead on the visible chart only (hidden tabs are redrawn when shown). */
     void refreshCursor() {
         Tab tab = getSelectionModel().getSelectedItem();
         if (tab != null && tab.getContent() instanceof TimeSeriesChart c) {
@@ -66,6 +68,7 @@ final class ChartsPane extends TabPane {
         }
     }
 
+    /** Rebuilds every chart's series from the selected car's truth, sensor log and estimator tracks. */
     void resultChanged() {
         CarResult car = state.car();
         if (car == null) {
@@ -80,6 +83,7 @@ final class ChartsPane extends TabPane {
         List<TimeSeriesChart.Series> err = new ArrayList<>();
         List<TimeSeriesChart.Series> spd = new ArrayList<>();
         int n = truth.size();
+        // Truth series (speed, yaw rate, elevation) thinned from 100 Hz to 10 Hz for drawing.
         int stride = 10;
         double[] tt = new double[(n + stride - 1) / stride], tv = new double[tt.length];
         for (int i = 0, k = 0; i < n && k < tt.length; i += stride, k++) {
@@ -110,6 +114,8 @@ final class ChartsPane extends TabPane {
         error.setSeries(err, tunnels, end);
         speed.setSeries(spd, tunnels, end);
 
+        // Raw accelerometer and gyroscope, in phone axes; the gyro chart also shows the car's true yaw rate for
+        // comparison.
         List<SensorEvent.ImuSample> imu = log.of(SensorEvent.ImuSample.class);
         double[] it = map(imu, SensorEvent::t);
         accel.setSeries(List.of(
@@ -130,6 +136,8 @@ final class ChartsPane extends TabPane {
 
         List<SensorEvent.BaroSample> bs = log.of(SensorEvent.BaroSample.class);
         if (!bs.isEmpty()) {
+            // Barometer and true road elevation, both relative to their first value (the barometer's absolute
+            // level is unknown).
             double h0 = MathUtil.pressureToAltitude(bs.get(0).pressure());
             double z0 = truth.z(0);
             double[] tz = new double[tt.length];
@@ -145,6 +153,8 @@ final class ChartsPane extends TabPane {
             baro.setSeries(List.of(), tunnels, end);
         }
 
+        // GNSS: reported accuracy (with breaks during outages), and on Android signal strength and satellite
+        // count.
         List<SensorEvent.GnssFix> fixes = log.of(SensorEvent.GnssFix.class);
         List<SensorEvent.GnssStatus> status = log.of(SensorEvent.GnssStatus.class);
         List<TimeSeriesChart.Series> g = new ArrayList<>();
@@ -190,6 +200,7 @@ final class ChartsPane extends TabPane {
         refreshCursor();
     }
 
+    /** Time intervals the car spent inside tunnels, for the grey shading. */
     private static List<double[]> tunnelIntervals(TruthTrajectory truth) {
         List<double[]> out = new ArrayList<>();
         double start = -1;
@@ -208,6 +219,7 @@ final class ChartsPane extends TabPane {
         return out;
     }
 
+    /** Extracts one number per event into an array (e.g. all timestamps). */
     private static <T> double[] map(List<T> list, ToDoubleFunction<T> f) {
         double[] out = new double[list.size()];
         for (int i = 0; i < out.length; i++) {
