@@ -142,3 +142,9 @@ sim-batch/   command-line runner and studies (figures with XChart)
 scenarios/   scenario library (YAML)
 docs/        design, write-up, figures
 ```
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE.md). You may use, change and share this project for any noncommercial
+purpose (personal use, research, education, or use by noncommercial organisations). Commercial use is not
+permitted without separate permission from the author.
